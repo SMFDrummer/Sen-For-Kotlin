@@ -1,15 +1,15 @@
 # Sen For Kotlin
 
-#### 介绍
+## 介绍
 
 -   `Sen` 是一个跨平台的项目，总结了[Haruma](https://github.com/Haruma-VN)的编程知识。按照他所说，这是一个帮助人们解决难题的项目。
 -   `Sen` 的原项目为[Sen](https://github.com/Haruma-VN/Sen)，本项目是对他的项目的Kotlin转译。
 
-#### 开源协议
+## 开源协议
 
 -   由于源项目使用了GPL-3.0许可证，故本项目依旧沿用GPL-3.0许可证。
 
-#### 其他说明
+## 其他说明
 
 -   感谢[Haruma](https://github.com/Haruma-VN)让我允许以他的项目为母版创建适用于JVM的代码运行时，而不是局限于`C#`、`C++`和`Python`。
 -   因为`C#`与`C++`在数据转换方面非常灵活，而Kotlin虽然严格限制了数据类型，但依旧死板，我不能保证所有的数据转换都按照预期工作，请评估后再使用。
