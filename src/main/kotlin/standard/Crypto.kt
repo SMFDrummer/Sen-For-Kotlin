@@ -20,7 +20,8 @@ fun computeHash(data: String, algorithm: String): String {
     }
 }
 
-fun encryptRTON(rtonData: ByteArray): ByteArray {
+@OptIn(ExperimentalUnsignedTypes::class)
+fun encryptRTON(rtonData: UByteArray): UByteArray {
     return rijndaelEncrypt(
         rtonData, PaddedBufferedBlockCipher(
             CBCBlockCipher.newInstance(RijndaelEngine(192)), ZeroBytePadding()
@@ -28,7 +29,8 @@ fun encryptRTON(rtonData: ByteArray): ByteArray {
     )
 }
 
-fun decryptRTON(rtonData: ByteArray): ByteArray {
+@OptIn(ExperimentalUnsignedTypes::class)
+fun decryptRTON(rtonData: UByteArray): UByteArray {
     return rijndaelDecrypt(
         rtonData, PaddedBufferedBlockCipher(
             CBCBlockCipher.newInstance(RijndaelEngine(192)), ZeroBytePadding()
@@ -36,11 +38,12 @@ fun decryptRTON(rtonData: ByteArray): ByteArray {
     )
 }
 
+@OptIn(ExperimentalUnsignedTypes::class)
 private fun rijndaelEncrypt(
-    paramArrayOfbyte: ByteArray,
+    paramArrayOfbyte: UByteArray,
     paramPaddedBufferedBlockCipher: PaddedBufferedBlockCipher,
     paramParametersWithIV: ParametersWithIV
-): ByteArray {
+): UByteArray {
     try {
         paramPaddedBufferedBlockCipher.init(true, paramParametersWithIV)
         return cd(paramPaddedBufferedBlockCipher, paramArrayOfbyte)
@@ -49,11 +52,12 @@ private fun rijndaelEncrypt(
     }
 }
 
+@OptIn(ExperimentalUnsignedTypes::class)
 private fun rijndaelDecrypt(
-    paramArrayOfbyte: ByteArray,
+    paramArrayOfbyte: UByteArray,
     paramPaddedBufferedBlockCipher: PaddedBufferedBlockCipher,
     paramParametersWithIV: ParametersWithIV?
-): ByteArray {
+): UByteArray {
     try {
         paramPaddedBufferedBlockCipher.init(false, paramParametersWithIV)
         return cd(paramPaddedBufferedBlockCipher, paramArrayOfbyte)
@@ -62,11 +66,18 @@ private fun rijndaelDecrypt(
     }
 }
 
+@OptIn(ExperimentalUnsignedTypes::class)
 @Throws(InvalidCipherTextException::class)
-private fun cd(paramPaddedBufferedBlockCipher: PaddedBufferedBlockCipher, paramArrayOfbyte: ByteArray): ByteArray {
+private fun cd(paramPaddedBufferedBlockCipher: PaddedBufferedBlockCipher, paramArrayOfbyte: UByteArray): UByteArray {
     var i = paramPaddedBufferedBlockCipher.getOutputSize(paramArrayOfbyte.size)
     val arrayOfByte = ByteArray(i)
-    i = paramPaddedBufferedBlockCipher.processBytes(paramArrayOfbyte, 0, paramArrayOfbyte.size, arrayOfByte, 0)
+    i = paramPaddedBufferedBlockCipher.processBytes(
+        paramArrayOfbyte.toByteArray(),
+        0,
+        paramArrayOfbyte.size,
+        arrayOfByte,
+        0
+    )
     val j = paramPaddedBufferedBlockCipher.doFinal(arrayOfByte, i)
-    return Arrays.copyOfRange(arrayOfByte, 0, i + j)
+    return Arrays.copyOfRange(arrayOfByte, 0, i + j).toUByteArray()
 }

@@ -9,6 +9,7 @@ import standard.decryptRTON
 import standard.encryptRTON
 import standard.iv
 import java.math.BigDecimal
+import kotlin.io.path.pathString
 
 object RTONProcession {
     private const val HEADER = "RTON"
@@ -30,17 +31,19 @@ object RTONProcession {
 
     //---------------------- rton crypto start ----------------------
 
+    @OptIn(ExperimentalUnsignedTypes::class)
     fun decrypt(rtonFile: SenBuffer): SenBuffer {
         if (rtonFile.readInt16LE() != 0x10.toShort()) throw Exception("RTON is not encrypted")
-        return SenBuffer(decryptRTON(rtonFile.getBytes(rtonFile.length.toInt() - 2, 2)))
+        return SenBuffer(decryptRTON(rtonFile.getUBytes(rtonFile.size - 2, 2)))
     }
 
+    @OptIn(ExperimentalUnsignedTypes::class)
     fun encrypt(rtonFile: SenBuffer): SenBuffer {
-        val padSize = iv.size - ((rtonFile.length + iv.size - 1) % iv.size + 1)
-        rtonFile.writeNull(padSize.toInt())
+        val padSize = iv.size - ((rtonFile.size + iv.size - 1) % iv.size + 1)
+        rtonFile.writeNull(padSize)
         val senBuffer = SenBuffer()
         senBuffer.writeInt16LE(0x10)
-        senBuffer.writeBytes(encryptRTON(rtonFile.toBytes()))
+        senBuffer.writeUBytes(encryptRTON(rtonFile.toUBytes()))
         return senBuffer
     }
 
@@ -58,7 +61,7 @@ object RTONProcession {
         if (rtonMagic != HEADER) {
             throw RTONDecodeException(
                 "Wrong RTON header",
-                rtonFile.filePath ?: "Undefined",
+                rtonFile.filePath?.pathString ?: "Undefined",
                 "Begin with RTON",
                 RTONListException.Header
             )
@@ -66,7 +69,7 @@ object RTONProcession {
         if (rtonVer != VERSION) {
             throw RTONDecodeException(
                 "Wrong RTON version",
-                rtonFile.filePath ?: "Undefined",
+                rtonFile.filePath?.pathString ?: "Undefined",
                 "Version must be 1",
                 RTONListException.Version
             )
@@ -75,7 +78,7 @@ object RTONProcession {
         val EOF = rtonFile.readString(4)
         if (EOF != EOR) throw RTONDecodeException(
             "End of RTON file wrong",
-            rtonFile.filePath ?: "Undefined",
+            rtonFile.filePath?.pathString ?: "Undefined",
             "End of RTON must be DONE",
             RTONListException.Ends
         )
@@ -157,12 +160,12 @@ object RTONProcession {
             0xB8.toUByte(),
             0xB9.toUByte(),
             0xBA.toUByte(),
-            0xBB.toUByte() -> throw RTONException("Not a RTON", rtonFile.filePath ?: "Undefined")
+            0xBB.toUByte() -> throw RTONException("Not a RTON", rtonFile.filePath?.pathString ?: "Undefined")
 
             0xBC.toUByte() -> return rtonFile.readUInt8() != 0.toUByte()
             else -> throw RTONException(
                 "Bytecode Error: $byte in offset: ${rtonFile.readOffset}",
-                rtonFile.filePath ?: "Undefined"
+                rtonFile.filePath?.pathString ?: "Undefined"
             )
         }
     }
@@ -202,7 +205,7 @@ object RTONProcession {
                 String.format(RTID_3, str1, str2)
             }
 
-            else -> throw RTONException("Not a RTON", rtonFile.filePath ?: "Undefined")
+            else -> throw RTONException("Not a RTON", rtonFile.filePath?.pathString ?: "Undefined")
         }
     }
 
@@ -221,14 +224,14 @@ object RTONProcession {
     private fun readArray(rtonFile: SenBuffer, jsonObject: JSONObject): JSONArray {
         val tempArray = JSONArray()
         var byteCode = rtonFile.readUInt8()
-        if (byteCode != 0xFD.toUByte()) throw RTONException("Not a RTON", rtonFile.filePath ?: "Undefined")
+        if (byteCode != 0xFD.toUByte()) throw RTONException("Not a RTON", rtonFile.filePath?.pathString ?: "Undefined")
         val number = rtonFile.readVarInt32()
         for (i in 0 until number) {
             byteCode = rtonFile.readUInt8()
             tempArray.add(readByteCode(byteCode, true, rtonFile, jsonObject))
         }
         byteCode = rtonFile.readUInt8()
-        if (byteCode != 0xFE.toUByte()) throw RTONException("Not a RTON", rtonFile.filePath ?: "Undefined")
+        if (byteCode != 0xFE.toUByte()) throw RTONException("Not a RTON", rtonFile.filePath?.pathString ?: "Undefined")
         return tempArray
     }
 
@@ -249,7 +252,7 @@ object RTONProcession {
         return rtonFile
     }
 
-    private fun isASCII(str: String): Boolean {
+    fun isASCII(str: String): Boolean {
         for (char in str) {
             if (char.code > 127) return false
         }
@@ -297,6 +300,7 @@ object RTONProcession {
         return false
     }
 
+    @OptIn(ExperimentalUnsignedTypes::class)
     private fun writeRTID(rtonFile: SenBuffer, str: String): Boolean {
         if (str.startsWith(RTID_BEGIN) && str.endsWith(RTID_END)) {
             if (str == RTID_0) {
@@ -317,7 +321,7 @@ object RTONProcession {
                     rtonFile.writeVarInt32(intStr[0].toInt())
                     val hexBytes = intStr[2].toByteArray(Charsets.UTF_8)
                     hexBytes.reverse()
-                    rtonFile.writeBytes(hexBytes)
+                    rtonFile.writeUBytes(hexBytes.toUByteArray())
                 } else {
                     rtonFile.writeUInt8(0x03.toUByte())
                     rtonFile.writeVarInt32(nameStr[1].length)
@@ -406,7 +410,7 @@ object RTONProcession {
             is Boolean -> rtonFile.writeBool(value)
             is String -> writeString(rtonFile, value.toString(), r0x90, r0x92)
             is Number -> writeNumber(rtonFile, value)
-            else -> throw RTONException("Not a RTON", rtonFile.filePath ?: "Undefined")
+            else -> throw RTONException("Not a RTON", rtonFile.filePath?.pathString ?: "Undefined")
         }
     }
 

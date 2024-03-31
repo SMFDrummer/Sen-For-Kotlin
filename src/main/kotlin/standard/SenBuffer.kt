@@ -1,285 +1,218 @@
 package standard
 
-import java.io.ByteArrayOutputStream
+import org.apache.commons.io.output.ByteArrayOutputStream
+import java.io.BufferedOutputStream
 import java.io.File
 import java.io.FileOutputStream
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.nio.charset.Charset
-import java.nio.file.Paths
+import java.nio.file.Path
 
 @Suppress("unused", "MemberVisibilityCanBePrivate")
 @OptIn(ExperimentalUnsignedTypes::class)
-class SenBuffer {
-    var baseStream: ByteArrayOutputStream
-    var length: Long
-        get() = baseStream.size().toLong()
-        set(value) {
-            baseStream = ByteArrayOutputStream(value.toInt())
-        }
-    var writeOffset: Long = 0
-    var readOffset: Long = 0
-    val current: Long
-        get() = this.readOffset
+class SenBuffer : Stream {
+    var writeOffset: Int = 0
+    var readOffset: Int = 0
     var imageWidth: Int = 0
     var imageHeight: Int = 0
-    var tempReadOffset: Long = 0
-    var tempWriteOffset: Long = 0
-    var filePath: String? = null
-    private var mBuffer: ByteArray? = null
-    var size: Long
-        get() = this.length
-        set(value) {
-            this.length = value
-        }
-    var encode: Charset = Charsets.UTF_8
+    var tempReadOffset: Int = 0
+    var tempWriteOffset: Int = 0
+    var mBuffer: ByteArray? = null
 
-    constructor(stream: ByteArrayOutputStream) {
-        baseStream = stream
-    }
+    constructor() : super()
+    constructor(value: Int) : super(value)
+    constructor(ubyteArray: UByteArray) : super(ubyteArray)
+    constructor(filePath: Path) : super(filePath)
 
-    constructor() : this(ByteArrayOutputStream())
-
-    constructor(bytes: ByteArray) : this(ByteArrayOutputStream().apply { write(bytes) })
-
-    constructor(size: Int) {
-        val bytes = UByteArray(size)
-        baseStream = ByteArrayOutputStream().apply { write(bytes.toByteArray()) }
-    }
-
-    constructor(filepath: String) {
-        val newPath = checkPath(filepath)
-        filePath = newPath
-        val bytes = File(newPath).readBytes()
-        baseStream = ByteArrayOutputStream().apply { write(bytes) }
-    }
-
-    private fun checkPath(filepath: String): String {
-        val path = Paths.get(filepath.replace("\\", "/"))
-        val newStringDir = path.parent.toString().split("/").map { it.trimEnd() }
-        val newFilePath = path.fileName.toString()
-        val newPath = Paths.get(newStringDir.joinToString("/"), newFilePath).toString()
-        return newPath
-    }
-
-    fun ByteArrayOutputStream.skip(offset: Long) {
-        if (offset < 0) {
-            throw IllegalArgumentException("Offset cannot be negative")
-        }
-
-        val currentPosition = this.size()
-        val newPosition = currentPosition + offset.toInt()
-
-        if (newPosition < 0) {
-            throw IllegalArgumentException("Invalid offset value")
-        }
-
-        if (newPosition > currentPosition) {
-            val zeroBytes = ByteArray(newPosition - currentPosition)
-            this.write(zeroBytes)
-        }
-    }
-
-    fun ByteArrayOutputStream.setOffset(offset: Long): ByteArrayOutputStream {
-        if (offset < 0 || offset > this.size().toLong()) {
-            throw IllegalArgumentException("Offset is out of bounds: $offset")
-        }
-
-        val newStream = ByteArrayOutputStream()
-        newStream.write(this.toByteArray(), 0, offset.toInt())
-        return newStream
-    }
-
-    private fun fixReadOffset(offset: Long) {
-        if (offset != -1L && offset > -1L) {
+    private fun fixReadOffset(offset: Int) {
+        if (offset != -1 && offset > -1) {
             readOffset = offset
-            baseStream.skip(readOffset)
-        } else if (offset == -1L) {
-            baseStream.skip(readOffset)
+            position = readOffset
+        } else if (offset == -1) {
+            position = readOffset
         } else {
-            throw IllegalArgumentException("Offset not found")
+            throw IllegalArgumentException("FixReadOffsetError: Offset not found")
         }
     }
 
-    private fun fixWriteOffset(offset: Long) {
-        if (offset != -1L && offset > -1L) {
+    private fun fixWriteOffset(offset: Int) {
+        if (offset != -1 && offset > -1) {
             writeOffset = offset
-            baseStream = baseStream.setOffset(writeOffset)
-        } else if (offset == -1L) {
-            baseStream = baseStream.setOffset(writeOffset)
+            position = writeOffset
+        } else if (offset == -1) {
+            position = writeOffset
         } else {
-            throw Exception()
+            throw IllegalArgumentException("FixWriteOffsetError: Offset not found")
         }
     }
 
-    fun readBytes(count: Int, offset: Long = -1L): ByteArray {
+    fun readUBytes(count: Int, offset: Int = -1): UByteArray {
         fixReadOffset(offset)
-        if (readOffset + count > length) {
-            throw IllegalArgumentException("Offset outside bounds of data view")
+        if (readOffset + count > this.size) {
+            throw IllegalArgumentException("ReadUBytesError: Offset outside bounds of data view")
         }
-        val array = ByteArray(count)
-        baseStream.toByteArray().copyInto(array, 0, readOffset.toInt(), readOffset.toInt() + count)
+        val array = UByteArray(count)
+        read(array, 0, count)
         readOffset += count
-        return array
+        return array.toUByteArray()
     }
 
-    fun readByte(offset: Long = -1L): Byte {
+    fun readUByte(offset: Int = -1): UByte {
         fixReadOffset(offset)
-        if (readOffset + 1 > length) {
-            throw IllegalArgumentException("Offset outside bounds of data view")
+        if (readOffset + 1 > this.size) {
+            throw IllegalArgumentException("ReadUByteError: Offset outside bounds of data view")
         }
-        val array = ByteArray(1)
-        baseStream.toByteArray().copyInto(array, 0, readOffset.toInt(), readOffset.toInt() + 1)
+        val array = UByteArray(1)
+        read(array, 0, 1)
         readOffset += 1
         return array[0]
     }
 
-    fun readString(count: Int, offset: Long = -1L, encodingType: String = "UTF-8"): String {
+    fun readString(count: Int, offset: Int = -1, encodingType: String = "UTF-8"): String {
         fixReadOffset(offset)
-        val array = readBytes(count)
-        val charset = Charset.forName(encodingType)
-        return String(array, charset)
+        return String(readUBytes(count).toByteArray(), Charset.forName(encodingType))
     }
 
-    fun getBytes(count: Int, offset: Long): ByteArray {
-        baseStream.skip(offset)
-        if (offset + count > length) {
-            throw IllegalArgumentException("Offset outside bounds of data view")
+    fun getUBytes(count: Int, offset: Int): UByteArray {
+        position = offset
+        if (offset + count > this.size) {
+            throw IllegalArgumentException("GetUBytesError: Offset outside bounds of data view")
         }
-        val array = ByteArray(count)
-        baseStream.toByteArray().copyInto(array, 0, offset.toInt(), offset.toInt() + count)
-        baseStream.skip(readOffset)
-        return array
+        val array = UByteArray(count)
+        read(array, 0, count)
+        position = readOffset
+        return array.toUByteArray()
     }
 
-    fun readUInt8(offset: Long = -1L): UByte {
+    fun readUInt8(offset: Int = -1): UByte {
         fixReadOffset(offset)
-        val mBuffer = readBytes(1)
-        return mBuffer[0].toUByte()
+        val mBuffer = readUBytes(1)
+        return mBuffer[0]
     }
 
-    fun readUInt16LE(offset: Long = -1L): UShort {
+    fun readUInt16LE(offset: Int = -1): UShort {
         fixReadOffset(offset)
-        val mBuffer = readBytes(2)
+        val mBuffer = readUBytes(2)
         return mBuffer[0].toUShort() or (mBuffer[1].toUInt() shl 8).toUShort()
     }
 
-    fun readUInt16BE(offset: Long = -1L): UShort {
+    fun readUInt16BE(offset: Int = -1): UShort {
         fixReadOffset(offset)
-        val mBuffer = readBytes(2)
+        val mBuffer = readUBytes(2)
         return mBuffer[1].toUShort() or (mBuffer[0].toUInt() shl 8).toUShort()
     }
 
-    fun readUInt24LE(offset: Long = -1L): UInt {
+    fun readUInt24LE(offset: Int = -1): UInt {
         fixReadOffset(offset)
-        val mBuffer = readBytes(3)
+        val mBuffer = readUBytes(3)
         return mBuffer[0].toUInt() or (mBuffer[1].toUInt() shl 8) or (mBuffer[2].toUInt() shl 16)
     }
 
-    fun readUInt24BE(offset: Long = -1L): UInt {
+    fun readUInt24BE(offset: Int = -1): UInt {
         fixReadOffset(offset)
-        val mBuffer = readBytes(3)
+        val mBuffer = readUBytes(3)
         return mBuffer[2].toUInt() or (mBuffer[1].toUInt() shl 8) or (mBuffer[0].toUInt() shl 16)
     }
 
-    fun readUInt32LE(offset: Long = -1L): UInt {
+    fun readUInt32LE(offset: Int = -1): UInt {
         fixReadOffset(offset)
-        val mBuffer = readBytes(4)
+        val mBuffer = readUBytes(4)
         return mBuffer[0].toUInt() or (mBuffer[1].toUInt() shl 8) or (mBuffer[2].toUInt() shl 16) or (mBuffer[3].toUInt() shl 24)
     }
 
-    fun readUInt32BE(offset: Long = -1L): UInt {
+    fun readUInt32BE(offset: Int = -1): UInt {
         fixReadOffset(offset)
-        val mBuffer = readBytes(4)
+        val mBuffer = readUBytes(4)
         return mBuffer[3].toUInt() or (mBuffer[2].toUInt() shl 8) or (mBuffer[1].toUInt() shl 16) or (mBuffer[0].toUInt() shl 24)
     }
 
-    fun readUInt64LE(offset: Long = -1L): ULong {
+    fun readUInt64LE(offset: Int = -1): ULong {
         fixReadOffset(offset)
-        val mBuffer = readBytes(8)
+        val mBuffer = readUBytes(8)
         return ((mBuffer[4].toULong() or (mBuffer[5].toULong() shl 8) or (mBuffer[6].toULong() shl 16) or (mBuffer[7].toULong() shl 24)) shl 32) or (mBuffer[0].toULong() or (mBuffer[1].toULong() shl 8) or (mBuffer[2].toULong() shl 16) or (mBuffer[3].toULong() shl 24))
     }
 
-    fun readUInt64BE(offset: Long = -1L): ULong {
+    fun readUInt64BE(offset: Int = -1): ULong {
         fixReadOffset(offset)
-        val mBuffer = readBytes(8)
+        val mBuffer = readUBytes(8)
         return ((mBuffer[3].toULong() or (mBuffer[2].toULong() shl 8) or (mBuffer[1].toULong() shl 16) or (mBuffer[0].toULong() shl 24)) shl 32) or (mBuffer[7].toULong() or (mBuffer[6].toULong() shl 8) or (mBuffer[5].toULong() shl 16) or (mBuffer[4].toULong() shl 24))
     }
 
-    fun readVarUInt32(offset: Long = -1L): UInt {
+    fun readVarUInt32(offset: Int = -1): UInt {
         fixReadOffset(offset)
         return readVarInt32().toUInt()
     }
 
-    fun readP(value: Long? = null): Long {
+    fun readP(value: Int? = null): Int {
         return if (value == null) this.readOffset else {
             this.readOffset = value
-            this.current
+            this.readOffset
         }
     }
 
-    fun readVarUInt64(offset: Long = -1L): ULong {
+    fun readVarUInt64(offset: Int = -1): ULong {
         fixReadOffset(offset)
         return readVarInt64().toULong()
     }
 
-    fun readInt8(offset: Long = -1L): Byte {
+    fun readInt8(offset: Int = -1): Byte {
         fixReadOffset(offset)
-        val mBuffer = readBytes(1)
+        val mBuffer = readUBytes(1)
         return mBuffer[0].toByte()
     }
 
-    fun readInt16LE(offset: Long = -1L): Short {
+    fun readInt16LE(offset: Int = -1): Short {
         fixReadOffset(offset)
-        val mBuffer = readBytes(2)
+        val mBuffer = readUBytes(2)
         return (mBuffer[0].toInt() or (mBuffer[1].toInt() shl 8)).toShort()
     }
 
-    fun readInt16BE(offset: Long = -1L): Short {
+    fun readInt16BE(offset: Int = -1): Short {
         fixReadOffset(offset)
-        val mBuffer = readBytes(2)
+        val mBuffer = readUBytes(2)
         return (mBuffer[1].toInt() or (mBuffer[0].toInt() shl 8)).toShort()
     }
 
-    fun readInt24LE(offset: Long = -1L): Int {
+    fun readInt24LE(offset: Int = -1): Int {
         fixReadOffset(offset)
         var num = readUInt24LE()
         if ((num and 0x800000u) != 0u) num = num or 0xff000000u
         return num.toInt()
     }
 
-    fun readInt24BE(offset: Long = -1L): Int {
+    fun readInt24BE(offset: Int = -1): Int {
         fixReadOffset(offset)
         var num = readUInt24BE()
         if ((num and 0x800000u) != 0u) num = num or 0xff000000u
         return num.toInt()
     }
 
-    fun readInt32LE(offset: Long = -1L): Int {
+    fun readInt32LE(offset: Int = -1): Int {
         fixReadOffset(offset)
-        val mBuffer = readBytes(4)
+        val mBuffer = readUBytes(4)
         return mBuffer[0].toInt() or (mBuffer[1].toInt() shl 8) or (mBuffer[2].toInt() shl 16) or (mBuffer[3].toInt() shl 24)
     }
 
-    fun readInt32BE(offset: Long = -1L): Int {
+    fun readInt32BE(offset: Int = -1): Int {
         fixReadOffset(offset)
-        val mBuffer = readBytes(4)
+        val mBuffer = readUBytes(4)
         return mBuffer[3].toInt() or (mBuffer[2].toInt() shl 8) or (mBuffer[1].toInt() shl 16) or (mBuffer[0].toInt() shl 24)
     }
 
-    fun readInt64LE(offset: Long = -1L): Long {
+    fun readInt64LE(offset: Int = -1): Long {
         fixReadOffset(offset)
-        val mBuffer = readBytes(8)
+        val mBuffer = readUBytes(8)
         return ((mBuffer[4].toLong() or (mBuffer[5].toLong() shl 8) or (mBuffer[6].toLong() shl 16) or (mBuffer[7].toLong() shl 24)) shl 32) or (mBuffer[0].toLong() or (mBuffer[1].toLong() shl 8) or (mBuffer[2].toLong() shl 16) or (mBuffer[3].toLong() shl 24))
     }
 
-    fun readInt64BE(offset: Long = -1L): Long {
+    fun readInt64BE(offset: Int = -1): Long {
         fixReadOffset(offset)
-        val mBuffer = readBytes(8)
+        val mBuffer = readUBytes(8)
         return ((mBuffer[3].toLong() or (mBuffer[2].toLong() shl 8) or (mBuffer[1].toLong() shl 16) or (mBuffer[0].toLong() shl 24)) shl 32) or (mBuffer[7].toLong() or (mBuffer[6].toLong() shl 8) or (mBuffer[5].toLong() shl 16) or (mBuffer[4].toLong() shl 24))
     }
 
-    fun readVarInt32(offset: Long = -1L): Int {
+    fun readVarInt32(offset: Int = -1): Int {
         fixReadOffset(offset)
         var num = 0
         var num2 = 0
@@ -295,7 +228,7 @@ class SenBuffer {
         return num
     }
 
-    fun readVarInt64(offset: Long = -1L): Long {
+    fun readVarInt64(offset: Int = -1): Long {
         fixReadOffset(offset)
         var num: Long = 0
         var num2 = 0
@@ -311,50 +244,50 @@ class SenBuffer {
         return num
     }
 
-    fun readZigZag32(offset: Long = -1L): Int {
+    fun readZigZag32(offset: Int = -1): Int {
         fixReadOffset(offset)
         val n = readVarInt32().toUInt()
         return ((n.toInt() shl 31) shr 31) xor (n.toInt() shr 1)
     }
 
-    fun readZigZag64(offset: Long = -1L): Long {
+    fun readZigZag64(offset: Int = -1): Long {
         fixReadOffset(offset)
         val n = readVarInt64().toULong()
         return ((n.toLong() shr 1) xor -(n.toLong() and 0b1))
     }
 
-    fun readFloatLE(offset: Long = -1L): Float {
+    fun readFloatLE(offset: Int = -1): Float {
         fixReadOffset(offset)
-        val mBuffer = readBytes(4)
-        return ByteBuffer.wrap(mBuffer).order(ByteOrder.LITTLE_ENDIAN).float
+        val mBuffer = readUBytes(4)
+        return ByteBuffer.wrap(mBuffer.toByteArray()).order(ByteOrder.LITTLE_ENDIAN).float
     }
 
-    fun readFloatBE(offset: Long = -1L): Float {
+    fun readFloatBE(offset: Int = -1): Float {
         fixReadOffset(offset)
-        val mBuffer = readBytes(4)
-        return ByteBuffer.wrap(mBuffer).order(ByteOrder.BIG_ENDIAN).float
+        val mBuffer = readUBytes(4)
+        return ByteBuffer.wrap(mBuffer.toByteArray()).order(ByteOrder.BIG_ENDIAN).float
     }
 
-    fun readDoubleLE(offset: Long = -1L): Double {
+    fun readDoubleLE(offset: Int = -1): Double {
         fixReadOffset(offset)
-        val mBuffer = readBytes(8)
-        return ByteBuffer.wrap(mBuffer).order(ByteOrder.LITTLE_ENDIAN).double
+        val mBuffer = readUBytes(8)
+        return ByteBuffer.wrap(mBuffer.toByteArray()).order(ByteOrder.LITTLE_ENDIAN).double
     }
 
-    fun readDoubleBE(offset: Long = -1L): Double {
+    fun readDoubleBE(offset: Int = -1): Double {
         fixReadOffset(offset)
-        val mBuffer = readBytes(8)
-        return ByteBuffer.wrap(mBuffer).order(ByteOrder.BIG_ENDIAN).double
+        val mBuffer = readUBytes(8)
+        return ByteBuffer.wrap(mBuffer.toByteArray()).order(ByteOrder.BIG_ENDIAN).double
     }
 
-    fun readBool(offset: Long = -1L): Boolean {
+    fun readBool(offset: Int = -1): Boolean {
         fixReadOffset(offset)
-        val mBuffer = readBytes(1)
+        val mBuffer = readUBytes(1)
         return mBuffer[0].toInt() != 0
     }
 
     @OptIn(ExperimentalUnsignedTypes::class)
-    fun readStringByEmpty(offset: Long = -1L): String {
+    fun readStringByEmpty(offset: Int = -1): String {
         fixReadOffset(offset)
         val bytes = mutableListOf<UByte>()
         var tp: UByte
@@ -369,7 +302,7 @@ class SenBuffer {
         return String(byteStr.toByteArray(), Charsets.UTF_8)
     }
 
-    fun getStringByEmpty(offset: Long): String {
+    fun getStringByEmpty(offset: Int): String {
         val tempOffset = readOffset
         readOffset = offset
         val str = readStringByEmpty()
@@ -377,170 +310,157 @@ class SenBuffer {
         return str
     }
 
-    fun readCharByInt16LE(offset: Long = -1L): Char {
+    fun readCharByInt16LE(offset: Int = -1): Char {
         fixReadOffset(offset)
-        val mBuffer = readBytes(2)
-        return ByteBuffer.wrap(mBuffer).order(ByteOrder.LITTLE_ENDIAN).char
+        val mBuffer = readUBytes(2)
+        return ByteBuffer.wrap(mBuffer.toByteArray()).order(ByteOrder.LITTLE_ENDIAN).char
     }
 
-    fun readStringByUInt8(offset: Long = -1L): String {
+    fun readStringByUInt8(offset: Int = -1): String {
         fixReadOffset(offset)
         return readString(readUInt8().toInt())
     }
 
-    fun readStringByInt8(offset: Long = -1L): String {
+    fun readStringByInt8(offset: Int = -1): String {
         fixReadOffset(offset)
         return readString(readInt8().toInt())
     }
 
-    fun readStringByUInt16LE(offset: Long = -1L): String {
+    fun readStringByUInt16LE(offset: Int = -1): String {
         fixReadOffset(offset)
         return readString(readUInt16LE().toInt())
     }
 
-    fun readStringByInt16LE(offset: Long = -1L): String {
+    fun readStringByInt16LE(offset: Int = -1): String {
         fixReadOffset(offset)
         return readString(readInt16LE().toInt())
     }
 
-    fun readStringByUInt32LE(offset: Long = -1L): String {
+    fun readStringByUInt32LE(offset: Int = -1): String {
         fixReadOffset(offset)
         return readString(readUInt32LE().toInt())
     }
 
-    fun readStringByInt32LE(offset: Long = -1L): String {
+    fun readStringByInt32LE(offset: Int = -1): String {
         fixReadOffset(offset)
         return readString(readInt32LE())
     }
 
-    fun readStringByVarInt32(offset: Long = -1L): String {
+    fun readStringByVarInt32(offset: Int = -1): String {
         fixReadOffset(offset)
         return readString(readVarInt32())
     }
 
-    fun peekUInt8(offset: Long = -1L): UByte {
+    fun peekUInt8(offset: Int = -1): UByte {
         val num = readUInt8(offset)
         readOffset--
         return num
     }
 
-    fun peekInt8(offset: Long = -1L): Byte {
+    fun peekInt8(offset: Int = -1): Byte {
         val num = readInt8(offset)
         readOffset--
         return num
     }
 
-    fun peekUInt16LE(offset: Long = -1L): UShort {
+    fun peekUInt16LE(offset: Int = -1): UShort {
         val num = readUInt16LE(offset)
         readOffset -= 2
         return num
     }
 
-    fun peekUInt16BE(offset: Long = -1L): UShort {
+    fun peekUInt16BE(offset: Int = -1): UShort {
         val num = readUInt16BE(offset)
         readOffset -= 2
         return num
     }
 
-    fun peekInt16LE(offset: Long = -1L): Short {
+    fun peekInt16LE(offset: Int = -1): Short {
         val num = readInt16LE(offset)
         readOffset -= 2
         return num
     }
 
-    fun peekInt16BE(offset: Long = -1L): Short {
+    fun peekInt16BE(offset: Int = -1): Short {
         val num = readInt16BE(offset)
         readOffset -= 2
         return num
     }
 
-    fun peekUInt24LE(offset: Long = -1L): UInt {
+    fun peekUInt24LE(offset: Int = -1): UInt {
         val num = readUInt24LE(offset)
         readOffset -= 3
         return num
     }
 
-    fun peekUInt24BE(offset: Long = -1L): UInt {
+    fun peekUInt24BE(offset: Int = -1): UInt {
         val num = readUInt24BE(offset)
         readOffset -= 3
         return num
     }
 
-    fun peekInt24LE(offset: Long = -1L): Int {
+    fun peekInt24LE(offset: Int = -1): Int {
         val num = readInt24LE(offset)
         readOffset -= 3
         return num
     }
 
-    fun peekInt24BE(offset: Long = -1L): Int {
+    fun peekInt24BE(offset: Int = -1): Int {
         val num = readInt24BE(offset)
         readOffset -= 3
         return num
     }
 
-    fun peekUInt32LE(offset: Long = -1L): UInt {
+    fun peekUInt32LE(offset: Int = -1): UInt {
         val num = readUInt32LE(offset)
         readOffset -= 4
         return num
     }
 
-    fun peekUInt32BE(offset: Long = -1L): UInt {
+    fun peekUInt32BE(offset: Int = -1): UInt {
         val num = readUInt32BE(offset)
         readOffset -= 4
         return num
     }
 
-    fun peekInt32LE(offset: Long = -1L): Int {
+    fun peekInt32LE(offset: Int = -1): Int {
         val num = readInt32LE(offset)
         readOffset -= 4
         return num
     }
 
-    fun peekInt32BE(offset: Long = -1L): Int {
+    fun peekInt32BE(offset: Int = -1): Int {
         val num = readInt32BE(offset)
         readOffset -= 4
         return num
     }
 
-    fun peekString(count: Int, offset: Long = -1L, encodingType: String = "UTF-8"): String {
+    fun peekString(count: Int, offset: Int = -1, encodingType: String = "UTF-8"): String {
         val str = readString(count, offset, encodingType)
         readOffset -= count
         return str
     }
 
-    fun writeBytes(array: UByteArray, offset: Long = -1L) {
+    fun writeUBytes(array: UByteArray, offset: Int = -1) {
         fixWriteOffset(offset)
         val length = array.size
-        baseStream.write(array.toByteArray(), 0, length)
+        write(array.toByteArray(), 0, length)
         writeOffset += length
     }
 
-    fun writeByte(byte: UByte, offset: Long = -1L) {
+    fun writeUByte(byte: UByte, offset: Int = -1) {
         fixWriteOffset(offset)
-        baseStream.write(ubyteArrayOf(byte).toByteArray(), 0, 1)
+        write(ubyteArrayOf(byte).toByteArray(), 0, 1)
         writeOffset += 1
     }
 
-    fun writeBytes(array: ByteArray, offset: Long = -1L) {
-        fixWriteOffset(offset)
-        val length = array.size
-        baseStream.write(array, 0, length)
-        writeOffset += length
-    }
-
-    fun writeByte(byte: Byte, offset: Long = -1L) {
-        fixWriteOffset(offset)
-        baseStream.write(byteArrayOf(byte), 0, 1)
-        writeOffset += 1
-    }
-
-    fun writeString(str: String, offset: Long = -1L, encodingType: String = "UTF-8") {
+    fun writeString(str: String, offset: Int = -1, encodingType: String = "UTF-8") {
         fixWriteOffset(offset)
         val strBytes = str.toByteArray(Charset.forName(encodingType)).toUByteArray()
-        writeBytes(strBytes)
+        writeUBytes(strBytes)
     }
 
-    fun writeStringByEmpty(str: String?, offset: Long = -1L) {
+    fun writeStringByEmpty(str: String?, offset: Int = -1) {
         if (str == null) {
             writeUInt8(0u)
             return
@@ -549,66 +469,66 @@ class SenBuffer {
         writeUInt8(0u)
     }
 
-    fun writeNull(count: Int, offset: Long = -1L) {
+    fun writeNull(count: Int, offset: Int = -1) {
         if (count < 0) throw Exception()
         if (count == 0) return
         fixWriteOffset(offset)
         val nullBytes = UByteArray(count)
-        writeBytes(nullBytes)
+        writeUBytes(nullBytes)
     }
 
-    fun writeStringFourUByte(str: String, offset: Long = -1L) {
+    fun writeStringFourUByte(str: String, offset: Int = -1) {
         fixWriteOffset(offset)
         val strLength = str.length
         val strBytes = UByteArray(strLength * 4 + 4)
         for (i in 0 until strLength) {
             strBytes[i * 4] = str[i].code.toUByte()
         }
-        writeBytes(strBytes)
+        writeUBytes(strBytes)
     }
 
-    fun setUBytes(array: UByteArray, offset: Long, overwriteOffset: Boolean) {
+    fun setUBytes(array: UByteArray, offset: Int, overwriteOffset: Boolean) {
         val length = array.size
         if (overwriteOffset) {
             fixWriteOffset(offset)
         } else {
-            baseStream.skip(offset)
+            position = offset
         }
-        baseStream.write(array.toByteArray(), 0, length)
-        baseStream.skip(writeOffset)
+        write(array.toByteArray(), 0, length)
+        position = writeOffset
     }
 
-    fun writeUInt8(number: UByte, offset: Long = -1L) {
+    fun writeUInt8(number: UByte, offset: Int = -1) {
         fixWriteOffset(offset)
         val mBuffer = ubyteArrayOf(number)
-        writeBytes(mBuffer)
+        writeUBytes(mBuffer)
     }
 
-    fun writeUInt16LE(number: UShort, offset: Long = -1L) {
+    fun writeUInt16LE(number: UShort, offset: Int = -1) {
         fixWriteOffset(offset)
         val mBuffer = ubyteArrayOf((number and 0xFFu).toUByte(), (number.toUInt() shr 8).toUByte())
-        writeBytes(mBuffer)
+        writeUBytes(mBuffer)
     }
 
-    fun writeUInt16BE(number: UShort, offset: Long = -1L) {
+    fun writeUInt16BE(number: UShort, offset: Int = -1) {
         fixWriteOffset(offset)
         val mBuffer = ubyteArrayOf((number.toUInt() shr 8).toUByte(), (number and 0xFFu).toUByte())
-        writeBytes(mBuffer)
+        writeUBytes(mBuffer)
     }
 
-    fun writeUInt24LE(number: UInt, offset: Long = -1L) {
+    fun writeUInt24LE(number: UInt, offset: Int = -1) {
         fixWriteOffset(offset)
         val mBuffer = ubyteArrayOf((number and 0xFFu).toUByte(), (number shr 8).toUByte(), (number shr 16).toUByte())
-        writeBytes(mBuffer)
+        writeUBytes(mBuffer)
     }
 
-    fun writeUInt24BE(number: UInt, offset: Long = -1L) {
+    fun writeUInt24BE(number: UInt, offset: Int = -1) {
         fixWriteOffset(offset)
         val mBuffer = ubyteArrayOf((number shr 16).toUByte(), (number shr 8).toUByte(), (number and 0xFFu).toUByte())
-        writeBytes(mBuffer)
+        writeUBytes(mBuffer)
     }
 
-    fun writeUInt32LE(number: UInt, offset: Long = -1L) {
+    fun writeUInt32LE(number: UInt, offset: Int = -1) {
         fixWriteOffset(offset)
         val mBuffer = ubyteArrayOf(
             (number and 0xFFu).toUByte(),
@@ -616,10 +536,10 @@ class SenBuffer {
             (number shr 16).toUByte(),
             (number shr 24).toUByte()
         )
-        writeBytes(mBuffer)
+        writeUBytes(mBuffer)
     }
 
-    fun writeUInt32BE(number: UInt, offset: Long = -1L) {
+    fun writeUInt32BE(number: UInt, offset: Int = -1) {
         fixWriteOffset(offset)
         val mBuffer = ubyteArrayOf(
             (number shr 24).toUByte(),
@@ -627,10 +547,10 @@ class SenBuffer {
             (number shr 8).toUByte(),
             (number and 0xFFu).toUByte()
         )
-        writeBytes(mBuffer)
+        writeUBytes(mBuffer)
     }
 
-    fun writeUInt64LE(number: ULong, offset: Long = -1L) {
+    fun writeUInt64LE(number: ULong, offset: Int = -1) {
         fixWriteOffset(offset)
         val mBuffer = ubyteArrayOf(
             (number and 0xFFu).toUByte(),
@@ -642,10 +562,10 @@ class SenBuffer {
             (number shr 48).toUByte(),
             (number shr 56).toUByte()
         )
-        writeBytes(mBuffer)
+        writeUBytes(mBuffer)
     }
 
-    fun writeUInt64BE(number: ULong, offset: Long = -1L) {
+    fun writeUInt64BE(number: ULong, offset: Int = -1) {
         fixWriteOffset(offset)
         val mBuffer = ubyteArrayOf(
             (number shr 56).toUByte(),
@@ -657,34 +577,34 @@ class SenBuffer {
             (number shr 8).toUByte(),
             (number and 0xFFu).toUByte()
         )
-        writeBytes(mBuffer)
+        writeUBytes(mBuffer)
     }
 
-    fun writeFloatLE(number: Float, offset: Long = -1L) {
+    fun writeFloatLE(number: Float, offset: Int = -1) {
         val mBuffer = ByteBuffer.allocate(4).order(ByteOrder.LITTLE_ENDIAN).putFloat(number).array().toUByteArray()
         fixWriteOffset(offset)
-        writeBytes(mBuffer)
+        writeUBytes(mBuffer)
     }
 
-    fun writeFloatBE(number: Float, offset: Long = -1L) {
+    fun writeFloatBE(number: Float, offset: Int = -1) {
         val mBuffer = ByteBuffer.allocate(4).order(ByteOrder.BIG_ENDIAN).putFloat(number).array().toUByteArray()
         fixWriteOffset(offset)
-        writeBytes(mBuffer)
+        writeUBytes(mBuffer)
     }
 
-    fun writeDoubleLE(number: Double, offset: Long = -1L) {
+    fun writeDoubleLE(number: Double, offset: Int = -1) {
         val mBuffer = ByteBuffer.allocate(8).order(ByteOrder.LITTLE_ENDIAN).putDouble(number).array().toUByteArray()
         fixWriteOffset(offset)
-        writeBytes(mBuffer)
+        writeUBytes(mBuffer)
     }
 
-    fun writeDoubleBE(number: Double, offset: Long = -1L) {
+    fun writeDoubleBE(number: Double, offset: Int = -1) {
         val mBuffer = ByteBuffer.allocate(8).order(ByteOrder.BIG_ENDIAN).putDouble(number).array().toUByteArray()
         fixWriteOffset(offset)
-        writeBytes(mBuffer)
+        writeUBytes(mBuffer)
     }
 
-    fun writeUVarInt32(number: UInt, offset: Long = -1L) {
+    fun writeUVarInt32(number: UInt, offset: Int = -1) {
         var num = number
         val bytes = mutableListOf<UByte>()
         while (num >= 128u) {
@@ -694,10 +614,10 @@ class SenBuffer {
         bytes.add(num.toUByte())
         val mBuffer = bytes.toUByteArray()
         fixWriteOffset(offset)
-        writeBytes(mBuffer)
+        writeUBytes(mBuffer)
     }
 
-    fun writeUVarInt64(number: ULong, offset: Long = -1L) {
+    fun writeUVarInt64(number: ULong, offset: Int = -1) {
         var num = number
         val bytes = mutableListOf<UByte>()
         while (num >= 128uL) {
@@ -707,92 +627,92 @@ class SenBuffer {
         bytes.add(num.toUByte())
         val mBuffer = bytes.toUByteArray()
         fixWriteOffset(offset)
-        writeBytes(mBuffer)
+        writeUBytes(mBuffer)
     }
 
-    fun writeInt8(number: Byte, offset: Long = -1L) {
+    fun writeInt8(number: Byte, offset: Int = -1) {
         fixWriteOffset(offset)
-        val mBuffer = byteArrayOf(number)
-        writeBytes(mBuffer)
+        val mBuffer = ubyteArrayOf(number.toUByte())
+        writeUBytes(mBuffer)
     }
 
-    fun writeInt16LE(number: Short, offset: Long = -1L) {
+    fun writeInt16LE(number: Short, offset: Int = -1) {
         fixWriteOffset(offset)
-        val mBuffer = byteArrayOf((number.toInt() and 0xFF).toByte(), (number.toInt() shr 8).toByte())
-        writeBytes(mBuffer)
+        val mBuffer = ubyteArrayOf(number.toUByte(), (number.toInt() shr 8).toUByte())
+        writeUBytes(mBuffer)
     }
 
-    fun writeInt16BE(number: Short, offset: Long = -1L) {
+    fun writeInt16BE(number: Short, offset: Int = -1) {
         fixWriteOffset(offset)
-        val mBuffer = byteArrayOf((number.toInt() shr 8).toByte(), (number.toInt() and 0xFF).toByte())
-        writeBytes(mBuffer)
+        val mBuffer = ubyteArrayOf((number.toInt() shr 8).toUByte(), number.toUByte())
+        writeUBytes(mBuffer)
     }
 
-    fun writeInt24LE(number: Int, offset: Long = -1L) {
+    fun writeInt24LE(number: Int, offset: Int = -1) {
         fixWriteOffset(offset)
-        val mBuffer = byteArrayOf((number and 0xFF).toByte(), (number shr 8).toByte(), (number shr 16).toByte())
-        writeBytes(mBuffer)
+        val mBuffer = ubyteArrayOf(number.toUByte(), (number shr 8).toUByte(), (number shr 16).toUByte())
+        writeUBytes(mBuffer)
     }
 
-    fun writeInt24BE(number: Int, offset: Long = -1L) {
+    fun writeInt24BE(number: Int, offset: Int = -1) {
         fixWriteOffset(offset)
-        val mBuffer = byteArrayOf((number shr 16).toByte(), (number shr 8).toByte(), (number and 0xFF).toByte())
-        writeBytes(mBuffer)
+        val mBuffer = ubyteArrayOf((number shr 16).toUByte(), (number shr 8).toUByte(), number.toUByte())
+        writeUBytes(mBuffer)
     }
 
-    fun writeInt32LE(number: Int, offset: Long = -1L) {
+    fun writeInt32LE(number: Int, offset: Int = -1) {
         fixWriteOffset(offset)
-        val mBuffer = byteArrayOf(
-            (number and 0xFF).toByte(),
-            (number shr 8).toByte(),
-            (number shr 16).toByte(),
-            (number shr 24).toByte()
+        val mBuffer = ubyteArrayOf(
+            number.toUByte(),
+            (number shr 8).toUByte(),
+            (number shr 16).toUByte(),
+            (number shr 24).toUByte()
         )
-        writeBytes(mBuffer)
+        writeUBytes(mBuffer)
     }
 
-    fun writeInt32BE(number: Int, offset: Long = -1L) {
+    fun writeInt32BE(number: Int, offset: Int = -1) {
         fixWriteOffset(offset)
-        val mBuffer = byteArrayOf(
-            (number shr 24).toByte(),
-            (number shr 16).toByte(),
-            (number shr 8).toByte(),
-            (number and 0xFF).toByte()
+        val mBuffer = ubyteArrayOf(
+            (number shr 24).toUByte(),
+            (number shr 16).toUByte(),
+            (number shr 8).toUByte(),
+            number.toUByte()
         )
-        writeBytes(mBuffer)
+        writeUBytes(mBuffer)
     }
 
-    fun writeBigInt64LE(number: Long, offset: Long = -1L) {
+    fun writeBigInt64LE(number: Long, offset: Int = -1) {
         fixWriteOffset(offset)
-        val mBuffer = byteArrayOf(
-            (number and 0xFF).toByte(),
-            (number shr 8).toByte(),
-            (number shr 16).toByte(),
-            (number shr 24).toByte(),
-            (number shr 32).toByte(),
-            (number shr 40).toByte(),
-            (number shr 48).toByte(),
-            (number shr 56).toByte()
+        val mBuffer = ubyteArrayOf(
+            number.toUByte(),
+            (number shr 8).toUByte(),
+            (number shr 16).toUByte(),
+            (number shr 24).toUByte(),
+            (number shr 32).toUByte(),
+            (number shr 40).toUByte(),
+            (number shr 48).toUByte(),
+            (number shr 56).toUByte()
         )
-        writeBytes(mBuffer)
+        writeUBytes(mBuffer)
     }
 
-    fun writeBigInt64BE(number: Long, offset: Long = -1L) {
+    fun writeBigInt64BE(number: Long, offset: Int = -1) {
         fixWriteOffset(offset)
-        val mBuffer = byteArrayOf(
-            (number shr 56).toByte(),
-            (number shr 48).toByte(),
-            (number shr 40).toByte(),
-            (number shr 32).toByte(),
-            (number shr 24).toByte(),
-            (number shr 16).toByte(),
-            (number shr 8).toByte(),
-            (number and 0xFF).toByte()
+        val mBuffer = ubyteArrayOf(
+            (number shr 56).toUByte(),
+            (number shr 48).toUByte(),
+            (number shr 40).toUByte(),
+            (number shr 32).toUByte(),
+            (number shr 24).toUByte(),
+            (number shr 16).toUByte(),
+            (number shr 8).toUByte(),
+            number.toUByte()
         )
-        writeBytes(mBuffer)
+        writeUBytes(mBuffer)
     }
 
-    fun writeVarInt32(number: Int, offset: Long = -1L) {
+    fun writeVarInt32(number: Int, offset: Int = -1) {
         var num = number.toUInt()
         fixWriteOffset(offset)
         while (num >= 128u) {
@@ -802,7 +722,7 @@ class SenBuffer {
         writeUInt8(num.toUByte())
     }
 
-    fun writeVarInt64(number: Long, offset: Long = -1L) {
+    fun writeVarInt64(number: Long, offset: Int = -1) {
         var num = number.toULong()
         fixWriteOffset(offset)
         while (num >= 128uL) {
@@ -812,37 +732,41 @@ class SenBuffer {
         writeUInt8(num.toUByte())
     }
 
-    fun writeBool(value: Boolean, offset: Long = -1L) {
+    fun writeBool(value: Boolean, offset: Int = -1) {
         val mBuffer = ubyteArrayOf(if (value) 1u else 0u)
         fixWriteOffset(offset)
-        writeBytes(mBuffer)
+        writeUBytes(mBuffer)
     }
 
-    fun writeZigZag32(number: Int, offset: Long = -1L) {
+    fun writeZigZag32(number: Int, offset: Int = -1) {
         fixWriteOffset(offset)
         writeVarInt32((number shl 1) xor (number shr 31))
     }
 
-    fun slice(begin: Long, end: Long) {
-        if (begin < 0 || end < begin || end > this.baseStream.size().toLong()) {
+    fun slice(begin: Int, end: Int) {
+        if (begin < 0 || end < begin || end > size) {
             throw IllegalArgumentException("Invalid Buffer Slice")
         }
-        val buffer = baseStream.toByteArray().sliceArray(begin.toInt() until end.toInt())
-        baseStream = ByteArrayOutputStream().apply { write(buffer) }
+        val length = end - begin
+        val buffer = UByteArray(length)
+        seek(begin, SeekOrigin.Begin)
+        read(buffer, 0, length)
+        stream = ByteArrayOutputStream(buffer.size).apply { write(buffer.toUByteArray().toByteArray()) }
+        return
     }
 
-    fun writeZigZag64(number: Long, offset: Long = -1L) {
+    fun writeZigZag64(number: Long, offset: Int = -1) {
         fixWriteOffset(offset)
         writeVarInt64((number shl 1) xor (number shr 63))
     }
 
-    fun writeCharByInt16LE(charStr: Char, offset: Long = -1L) {
-        val strBytes = charStr.toString().toByteArray(Charsets.UTF_16LE)
+    fun writeCharByInt16LE(charStr: Char, offset: Int = -1) {
+        val strBytes = charStr.toString().toByteArray(Charsets.UTF_16LE).toUByteArray()
         fixWriteOffset(offset)
-        writeBytes(strBytes)
+        writeUBytes(strBytes)
     }
 
-    fun writeStringByUInt8(str: String?, offset: Long = -1L) {
+    fun writeStringByUInt8(str: String?, offset: Int = -1) {
         fixWriteOffset(offset)
         if (str == null) {
             writeUInt8(0u)
@@ -852,7 +776,7 @@ class SenBuffer {
         writeString(str)
     }
 
-    fun writeStringByInt8(str: String?, offset: Long = -1L) {
+    fun writeStringByInt8(str: String?, offset: Int = -1) {
         fixWriteOffset(offset)
         if (str == null) {
             writeInt8(0)
@@ -862,7 +786,7 @@ class SenBuffer {
         writeString(str)
     }
 
-    fun writeStringByUInt16LE(str: String?, offset: Long = -1L) {
+    fun writeStringByUInt16LE(str: String?, offset: Int = -1) {
         fixWriteOffset(offset)
         if (str == null) {
             writeUInt16LE(0u)
@@ -872,7 +796,7 @@ class SenBuffer {
         writeString(str)
     }
 
-    fun writeStringByInt16LE(str: String?, offset: Long = -1L) {
+    fun writeStringByInt16LE(str: String?, offset: Int = -1) {
         fixWriteOffset(offset)
         if (str == null) {
             writeInt16LE(0)
@@ -882,7 +806,7 @@ class SenBuffer {
         writeString(str)
     }
 
-    fun writeStringByUInt32LE(str: String?, offset: Long = -1L) {
+    fun writeStringByUInt32LE(str: String?, offset: Int = -1) {
         fixWriteOffset(offset)
         if (str == null) {
             writeUInt32LE(0u)
@@ -892,7 +816,7 @@ class SenBuffer {
         writeString(str)
     }
 
-    fun writeStringByInt32LE(str: String?, offset: Long = -1L) {
+    fun writeStringByInt32LE(str: String?, offset: Int = -1) {
         fixWriteOffset(offset)
         if (str == null) {
             writeInt32LE(0)
@@ -902,41 +826,30 @@ class SenBuffer {
         writeString(str)
     }
 
-    fun writeStringByVarInt32(str: String?, offset: Long = -1L) {
+    fun writeStringByVarInt32(str: String?, offset: Int = -1) {
         fixWriteOffset(offset)
         if (str == null) {
             writeVarInt32(0)
             return
         }
-        val ary = str.toByteArray(encode).toUByteArray()
+        val ary = str.toByteArray(Charsets.UTF_8).toUByteArray()
         writeVarInt32(ary.size)
-        writeBytes(ary)
+        writeUBytes(ary)
     }
 
-    fun writeSenBuffer(input: SenBuffer, offset: Long = -1L) {
+    fun writeSenBuffer(input: SenBuffer, offset: Int = -1) {
         val mBuffer = input.toUBytes()
         fixWriteOffset(offset)
-        writeBytes(mBuffer)
+        writeUBytes(mBuffer)
     }
 
     fun toUBytes(): UByteArray {
-        val tempOffset = baseStream.size().toLong()
-        val bytes = baseStream.toByteArray().toUByteArray()
-        baseStream = ByteArrayOutputStream().apply { write(bytes.toByteArray()) }
-        writeOffset = tempOffset
-        return bytes
-    }
-
-    fun toBytes(): ByteArray {
-        val tempOffset = baseStream.size().toLong()
-        val bytes = baseStream.toByteArray()
-        baseStream = ByteArrayOutputStream().apply { write(bytes) }
-        writeOffset = tempOffset
-        return bytes
+        return stream.toByteArray().toUByteArray()
     }
 
     fun toStream(): ByteArrayOutputStream {
-        return baseStream
+        flush()
+        return stream
     }
 
     fun toString(encodingType: String = "UTF-8"): String {
@@ -960,60 +873,39 @@ class SenBuffer {
         writeOffset = tempWriteOffset
     }
 
-    fun createDirectory(outputPath: String) {
-        val path = Paths.get(outputPath).parent.toString()
+    fun createDirectory(outputPath: Path) {
+        val path = outputPath.parent.toString()
         val directory = File(path)
         if (!directory.exists()) {
             directory.mkdirs()
         }
     }
 
-    fun outFile(outputPath: String) {
-        val newPath = checkPath(outputPath)
-        createDirectory(newPath)
-        saveFile(newPath)
+    fun outFile(outputPath: Path) {
+        createDirectory(outputPath)
+        saveFile(outputPath)
     }
 
     fun copy(s: SenBuffer) {
-        val array = UByteArray(81920)
-        val count = read(array, 0, array.size)
-        while (count != 0) {
-            s.write(array, 0, count)
+        var array = UByteArray(81920)
+        read(array, 0, 81920)
+        while (array.isNotEmpty()) {
+            s.write(array.toUByteArray().toByteArray(), 0, array.size)
+            array = UByteArray(81920)
+            read(array, 0, 81920)
         }
     }
 
-    fun ByteArrayOutputStream.read(buffer: UByteArray, offset: Int, count: Int): Int {
-        val byteArray = this.toByteArray()
-        if (byteArray.size - offset < count) {
-            throw IndexOutOfBoundsException("Not enough data available in the stream")
-        }
-        for (i in 0 until count) {
-            buffer[i] = byteArray[offset + i].toUByte()
-        }
-        return count
-    }
-
-    fun read(buffer: UByteArray, offset: Int, count: Int): Int {
-        return this.baseStream.read(buffer, offset, count)
-    }
-
-    fun write(buffer: UByteArray, offset: Int, count: Int) {
-        this.baseStream.write(buffer.toByteArray(), offset, count)
-    }
-
-    fun saveFile(path: String) {
-        FileOutputStream(path).use { fileStream ->
-            baseStream.reset()
-            baseStream.writeTo(fileStream)
-        }
+    fun saveFile(path: Path) {
+        BufferedOutputStream(FileOutputStream(path.toString())).use { bufferedStream -> bufferedStream.write(stream.toByteArray()) }
         close()
     }
 
     fun close() {
-        baseStream.close()
+        stream.close()
     }
 
     fun flush() {
-        baseStream.flush()
+        stream.flush()
     }
 }
