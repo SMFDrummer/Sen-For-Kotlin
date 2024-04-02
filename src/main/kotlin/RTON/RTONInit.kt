@@ -29,7 +29,6 @@ object RTONInit {
         Files.delete(rtonTmpFilePath)
     }
 
-    @OptIn(ExperimentalUnsignedTypes::class)
     fun encode(jsonFilePathString: String, toEncryptedRTON: Boolean) {
         val jsonFilePath = Paths.get(jsonFilePathString)
         val jsonFileName = jsonFilePath.fileName.toString()
@@ -40,7 +39,7 @@ object RTONInit {
         if (toEncryptedRTON) rtonBytes =
             RTONProcession.encrypt(rtonBytes) //Annotate it if you don't want to encrypt/decrypt it
         val fileOutputStream = BufferedOutputStream(FileOutputStream(fileParentPath + File.separator + rtonFileName))
-        fileOutputStream.write(rtonBytes.toUBytes().toByteArray())
+        fileOutputStream.write(rtonBytes.toBytes())
         fileOutputStream.close()
     }
 }

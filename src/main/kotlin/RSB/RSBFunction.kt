@@ -12,8 +12,6 @@ import java.io.FileWriter
 import java.nio.file.Files
 import java.nio.file.Paths
 import java.util.*
-
-@OptIn(ExperimentalUnsignedTypes::class)
 object RSBFunction {
     fun unpack(rsbFile: SenBuffer, outFolder: String): ManifestInfo {
         val rsbHeadInfo = readHead(rsbFile)
@@ -81,7 +79,7 @@ object RSBFunction {
                 }
                 rsgNameList.add(rsgInfoList[rsgInfoCount].name)
                 val packetFile =
-                    rsbFile.getUBytes(rsgInfoList[rsgInfoCount].rsgLength, rsgInfoList[rsgInfoCount].rsgOffset)
+                    rsbFile.getBytes(rsgInfoList[rsgInfoCount].rsgLength, rsgInfoList[rsgInfoCount].rsgOffset.toLong())
                 val RSGFile = SenBuffer(packetFile)
                 val packetInfo = RSGFunction.unpack(RSGFile, "", useResFolder = false, getPacketInfo = true)
                 val resInfoList = mutableListOf<RSBResInfo>()
@@ -128,8 +126,8 @@ object RSBFunction {
                 }
                 RSGFile.outFile(Paths.get("$outFolder${s}packet${s}${rsgInfoList[rsgInfoCount].name}.rsg"))
                 val packetInfoList = RSBPacketInfo(
-                    version = rsbFile.readInt32LE(rsgInfoList[rsgInfoCount].rsgOffset + 4),
-                    compressionFlags = rsbFile.readInt32LE(rsgInfoList[rsgInfoCount].rsgOffset + 16),
+                    version = rsbFile.readInt32LE((rsgInfoList[rsgInfoCount].rsgOffset + 4).toLong()),
+                    compressionFlags = rsbFile.readInt32LE((rsgInfoList[rsgInfoCount].rsgOffset + 16).toLong()),
                     res = resInfoList.toMutableList()
                 )
                 subGroupList.add(
@@ -165,7 +163,7 @@ object RSBFunction {
     }
 
     private fun readResourcesDescription(RSBFile: SenBuffer, rsbHeadInfo: RSBHead, outFolder: String) {
-        RSBFile.readOffset = rsbHeadInfo.part1BeginOffset
+        RSBFile.readOffset = rsbHeadInfo.part1BeginOffset.toLong()
         val part2Offset = rsbHeadInfo.part2BeginOffset
         val part3Offset = rsbHeadInfo.part3BeginOffset
         val compositeResourcesInfo = mutableListOf<CompositeResourcesDescriptionInfo>()
@@ -173,7 +171,7 @@ object RSBFunction {
         var i = 0
         while (RSBFile.readOffset < part2Offset) {
             val idOffsetPart3 = RSBFile.readInt32LE()
-            val id = RSBFile.getStringByEmpty((part3Offset + idOffsetPart3))
+            val id = RSBFile.getStringByEmpty(((part3Offset + idOffsetPart3).toLong()))
             val rsgNumber = RSBFile.readInt32LE()
             val subgroup = mutableMapOf<String, DescriptionSubGroup>()
             if (RSBFile.readInt32LE() != 0x10) throw Exception("Invalid RSG number | Offset: ${RSBFile.readOffset}")
@@ -188,7 +186,7 @@ object RSBFunction {
                     val infoOffsetPart2 = RSBFile.readInt32LE()
                     resourcesInfoList.add(ResourcesInfo(infoOffsetPart2 = infoOffsetPart2))
                 }
-                val rsgId = RSBFile.getStringByEmpty(part3Offset + rsgIdOffsetPart3)
+                val rsgId = RSBFile.getStringByEmpty((part3Offset + rsgIdOffsetPart3).toLong())
                 subgroup[rsgId] =
                     DescriptionSubGroup(res = "$resolutionRatio", language = language, resources = mutableMapOf())
                 rsgInfoList.add(
@@ -215,7 +213,7 @@ object RSBFunction {
                 val resourcesNumber = compositeResourcesInfo[i].rsgInfoList[k].resourcesNumber
                 for (h in 0 until resourcesNumber) {
                     RSBFile.readOffset =
-                        part2Offset + compositeResourcesInfo[i].rsgInfoList[k].resourcesInfoList[h].infoOffsetPart2
+                        (part2Offset + compositeResourcesInfo[i].rsgInfoList[k].resourcesInfoList[h].infoOffsetPart2).toLong()
                     if (RSBFile.readInt32LE() != 0x0) throw Exception("Invalid Part2 Offset: ${RSBFile.readOffset}")
                     val type = RSBFile.readUInt16LE()
                     if (RSBFile.readUInt16LE() != 0x1C.toUShort()) throw Exception("Invalid head length : ${RSBFile.readOffset}")
@@ -223,8 +221,8 @@ object RSBFunction {
                     val ptxInfoBeginOffsetPart2 = RSBFile.readInt32LE()
                     val resIdOffsetPart3 = RSBFile.readInt32LE()
                     val pathOffsetPart3 = RSBFile.readInt32LE()
-                    val resId = RSBFile.getStringByEmpty(part3Offset + resIdOffsetPart3)
-                    val resPath = RSBFile.getStringByEmpty(part3Offset + pathOffsetPart3)
+                    val resId = RSBFile.getStringByEmpty((part3Offset + resIdOffsetPart3).toLong())
+                    val resPath = RSBFile.getStringByEmpty((part3Offset + pathOffsetPart3).toLong())
                     val propertiesNumber = RSBFile.readInt32LE()
                     var ptxInfoList: PropertiesPTXInfo? = null
                     if (ptxInfoEndOffsetPart2 * ptxInfoBeginOffsetPart2 != 0) {
@@ -239,7 +237,7 @@ object RSBFunction {
                             ah = "${RSBFile.readUInt16LE()}",
                             rows = "${RSBFile.readUInt16LE()}",
                             cols = "${RSBFile.readUInt16LE()}",
-                            parent = RSBFile.getStringByEmpty(part3Offset + RSBFile.readInt32LE())
+                            parent = RSBFile.getStringByEmpty((part3Offset + RSBFile.readInt32LE()).toLong())
                         )
                     }
                     val propertiesInfoList = mutableMapOf<String, String>()
@@ -249,8 +247,8 @@ object RSBFunction {
                             throw Exception("RSB is corrupted")
                         }
                         val valueOffsetPart3 = RSBFile.readInt32LE()
-                        val key = RSBFile.getStringByEmpty(part3Offset + keyOffsetPart3)
-                        val value = RSBFile.getStringByEmpty(part3Offset + valueOffsetPart3)
+                        val key = RSBFile.getStringByEmpty((part3Offset + keyOffsetPart3).toLong())
+                        val value = RSBFile.getStringByEmpty((part3Offset + valueOffsetPart3).toLong())
                         propertiesInfoList[key] = value
                     }
                     val descriptionResources = DescriptionResources(
@@ -287,11 +285,11 @@ object RSBFunction {
         if (magic != "1bsr") throw Exception("This file is not RSB")
         val version = rsbFile.readInt32LE()
         rsbHeadInfo.version = version
-        rsbFile.readUBytes(4)
+        rsbFile.readBytes(4)
         rsbHeadInfo.fileOffset = rsbFile.readInt32LE()
         rsbHeadInfo.fileListLength = rsbFile.readInt32LE()
         rsbHeadInfo.fileListBeginOffset = rsbFile.readInt32LE()
-        rsbFile.readUBytes(8)
+        rsbFile.readBytes(8)
         rsbHeadInfo.rsgListLength = rsbFile.readInt32LE()
         rsbHeadInfo.rsgListBeginOffset = rsbFile.readInt32LE()
         rsbHeadInfo.rsgNumber = rsbFile.readInt32LE()
@@ -323,7 +321,7 @@ object RSBFunction {
         tempLength: Int,
         fileList: MutableList<FileListInfo>
     ) {
-        rsbFile.readOffset = tempOffset
+        rsbFile.readOffset = tempOffset.toLong()
         val nameDict = mutableListOf<NameDict>()
         var namePath = ""
         val offsetLimit = tempOffset + tempLength
@@ -336,7 +334,7 @@ object RSBFunction {
                 }
                 fileList.add(FileListInfo(namePath = namePath, poolIndex = rsbFile.readInt32LE()))
                 for (i in nameDict.indices) {
-                    if ((nameDict[i].offsetByte + tempOffset) == rsbFile.readOffset) {
+                    if ((nameDict[i].offsetByte + tempOffset).toLong() == rsbFile.readOffset) {
                         namePath = nameDict[i].namePath
                         nameDict.removeAt(i)
                         break
@@ -360,7 +358,7 @@ object RSBFunction {
         rsbHeadInfo: RSBHead,
         compositeInfoList: MutableList<CompositeInfo>
     ) {
-        rsbFile.readOffset = rsbHeadInfo.compositeInfoBeginOffset
+        rsbFile.readOffset = rsbHeadInfo.compositeInfoBeginOffset.toLong()
         for (i in 0 until rsbHeadInfo.compositeNumber) {
             val startOffset = rsbFile.readOffset
             val compositeName = rsbFile.readStringByEmpty()
@@ -378,7 +376,7 @@ object RSBFunction {
                         )
                     )
                 )
-                rsbFile.readUBytes(4)
+                rsbFile.readBytes(4)
             }
             compositeInfoList.add(
                 CompositeInfo(
@@ -396,7 +394,7 @@ object RSBFunction {
     }
 
     private fun readRSGInfo(rsbFile: SenBuffer, rsbHeadInfo: RSBHead, rsgInfoList: MutableList<RSGInfo>) {
-        rsbFile.readOffset = rsbHeadInfo.rsgInfoBeginOffset
+        rsbFile.readOffset = rsbHeadInfo.rsgInfoBeginOffset.toLong()
         for (i in 0 until rsbHeadInfo.rsgNumber) {
             val startOffset = rsbFile.readOffset
             val packetName = rsbFile.readStringByEmpty()
@@ -422,7 +420,7 @@ object RSBFunction {
     }
 
     private fun readAutoPool(rsbFile: SenBuffer, rsbHeadInfo: RSBHead, autoPoolList: MutableList<AutoPoolInfo>) {
-        rsbFile.readOffset = rsbHeadInfo.autoPoolInfoBeginOffset
+        rsbFile.readOffset = rsbHeadInfo.autoPoolInfoBeginOffset.toLong()
         for (i in 0 until rsbHeadInfo.autoPoolNumber) {
             val startOffset = rsbFile.readOffset
             val autoPoolName = rsbFile.readStringByEmpty()
@@ -442,7 +440,7 @@ object RSBFunction {
     }
 
     private fun readPTXInfo(rsbFile: SenBuffer, rsbHeadInfo: RSBHead, ptxInfoList: MutableList<RSBPTXInfo>) {
-        rsbFile.readOffset = rsbHeadInfo.ptxInfoBeginOffset
+        rsbFile.readOffset = rsbHeadInfo.ptxInfoBeginOffset.toLong()
         if (rsbHeadInfo.ptxInfoEachLength != 0x10 && rsbHeadInfo.ptxInfoEachLength != 0x14 && rsbHeadInfo.ptxInfoEachLength != 0x18) {
             throw Exception("Invalid PTX info each length")
         }
@@ -473,7 +471,7 @@ object RSBFunction {
     }
 
     private fun checkEndOffset(rsbFile: SenBuffer, endOffset: Int) {
-        if (rsbFile.readOffset != endOffset) {
+        if (rsbFile.readOffset != endOffset.toLong()) {
             throw Exception("Invalid offset: ${rsbFile.readOffset} | $endOffset")
         }
     }
@@ -545,7 +543,7 @@ object RSBFunction {
                         // Write PTXInfo
                         val id = kThird.ptxInfo!!.id
                         val ptxOffset = (ptxBeforeNumber + id) * rsbHeadInfo.ptxInfoEachLength
-                        ptxInfo.writeInt32LE(kThird.ptxInfo!!.width, ptxOffset)
+                        ptxInfo.writeInt32LE(kThird.ptxInfo!!.width, ptxOffset.toLong())
                         ptxInfo.writeInt32LE(kThird.ptxInfo!!.height)
                         val format = kThird.ptxProperty!!.format
                         val pitch = kThird.ptxProperty!!.pitch
@@ -576,12 +574,12 @@ object RSBFunction {
                 // Write RSGInfo
                 rsgInfo.writeString(rsgName)
                 rsgInfo.writeNull(128 - rsgName.length)
-                rsgInfo.writeInt32LE(rsgFileBank.writeOffset)
+                rsgInfo.writeInt32LE(rsgFileBank.writeOffset.toInt())
                 // WritePacket
-                rsgFileBank.writeUBytes(rsgFile.toUBytes())
-                rsgInfo.writeInt32LE(rsgFile.size)
+                rsgFileBank.writeBytes(rsgFile.toBytes())
+                rsgInfo.writeInt32LE(rsgFile.length.toInt())
                 rsgInfo.writeInt32LE(rsgPacketIndex)
-                rsgInfo.writeUBytes(rsgFile.getUBytes(56, 0x10))
+                rsgInfo.writeBytes(rsgFile.getBytes(56, 0x10))
                 val rsgWriteOffset = rsgInfo.writeOffset
                 rsgInfo.writeInt32LE(rsgFile.readInt32LE(0x20), rsgWriteOffset - 36)
                 rsgInfo.writeInt32LE(ptxNumber, rsgWriteOffset)
@@ -617,57 +615,57 @@ object RSBFunction {
             for (j in 0 until fileListPathTempLength) {
                 writeFileList(rsbFile, fileListPathTemp[j])
             }
-            rsbHeadInfo.fileListLength = rsbFile.writeOffset - fileListBeginOffset
+            rsbHeadInfo.fileListLength = (rsbFile.writeOffset - fileListBeginOffset).toInt()
             // RSGList
             val rsgListPathTempLength = rsgListPathTemp.size
-            rsbHeadInfo.rsgListBeginOffset = rsbFile.writeOffset
+            rsbHeadInfo.rsgListBeginOffset = rsbFile.writeOffset.toInt()
             for (k in 0 until rsgListPathTempLength) {
                 writeFileList(rsbFile, rsgListPathTemp[k])
             }
-            rsbHeadInfo.rsgListLength = rsbFile.writeOffset - rsbHeadInfo.rsgListBeginOffset
+            rsbHeadInfo.rsgListLength = (rsbFile.writeOffset - rsbHeadInfo.rsgListBeginOffset).toInt()
             // CompositeInfo
             rsbHeadInfo.compositeNumber = groupLength
-            rsbHeadInfo.compositeInfoBeginOffset = rsbFile.writeOffset
-            rsbFile.writeUBytes(compositeInfo.toUBytes())
+            rsbHeadInfo.compositeInfoBeginOffset = rsbFile.writeOffset.toInt()
+            rsbFile.writeBytes(compositeInfo.toBytes())
             compositeInfo.close()
             // CompositeList
             val compositeListPathTempLength = compositeListPathTemp.size
-            rsbHeadInfo.compositeListBeginOffset = rsbFile.writeOffset
+            rsbHeadInfo.compositeListBeginOffset = rsbFile.writeOffset.toInt()
             for (j in 0 until compositeListPathTempLength) {
                 writeFileList(rsbFile, compositeListPathTemp[j])
             }
-            rsbHeadInfo.compositeListLength = rsbFile.writeOffset - rsbHeadInfo.compositeListBeginOffset
+            rsbHeadInfo.compositeListLength = (rsbFile.writeOffset - rsbHeadInfo.compositeListBeginOffset).toInt()
             // RSGInfo
-            rsbHeadInfo.rsgInfoBeginOffset = rsbFile.writeOffset
+            rsbHeadInfo.rsgInfoBeginOffset = rsbFile.writeOffset.toInt()
             rsbHeadInfo.rsgNumber = rsgPacketIndex
-            rsbFile.writeUBytes(rsgInfo.toUBytes())
+            rsbFile.writeBytes(rsgInfo.toBytes())
             rsgInfo.close()
             // AutoPoolInfo
-            rsbHeadInfo.autoPoolInfoBeginOffset = rsbFile.writeOffset
+            rsbHeadInfo.autoPoolInfoBeginOffset = rsbFile.writeOffset.toInt()
             rsbHeadInfo.autoPoolNumber = rsgPacketIndex
-            rsbFile.writeUBytes(autoPoolInfo.toUBytes())
+            rsbFile.writeBytes(autoPoolInfo.toBytes())
             autoPoolInfo.close()
             // PTXInfo
-            rsbHeadInfo.ptxInfoBeginOffset = rsbFile.writeOffset
+            rsbHeadInfo.ptxInfoBeginOffset = rsbFile.writeOffset.toInt()
             rsbHeadInfo.ptxNumber = ptxBeforeNumber
-            rsbFile.writeUBytes(ptxInfo.toUBytes())
+            rsbFile.writeBytes(ptxInfo.toBytes())
             ptxInfo.close()
             if (version == 3) {
                 // Description
                 writeResourcesDescription(rsbFile, rsbHeadInfo, inFolder)
             }
-            rsbFile.writeNull(RSGFunction.beautifyLength(rsbFile.writeOffset))
+            rsbFile.writeNull(RSGFunction.beautifyLength(rsbFile.writeOffset.toInt()))
             // Packet
             val fileOffset = rsbFile.writeOffset
-            rsbHeadInfo.fileOffset = fileOffset
-            rsbFile.writeUBytes(rsgFileBank.toUBytes())
+            rsbHeadInfo.fileOffset = fileOffset.toInt()
+            rsbFile.writeBytes(rsgFileBank.toBytes())
             rsgFileBank.close()
             // Rewrite PacketOffset
-            rsbFile.readOffset = rsbHeadInfo.rsgInfoBeginOffset
+            rsbFile.readOffset = rsbHeadInfo.rsgInfoBeginOffset.toLong()
             for (j in 0 until rsbHeadInfo.rsgNumber) {
                 val rsgInfoFileOffset = (rsbHeadInfo.rsgInfoBeginOffset + j * rsbHeadInfo.rsgInfoEachLength) + 128
-                val packetOffset = rsbFile.readInt32LE(rsgInfoFileOffset)
-                rsbFile.writeInt32LE(packetOffset + fileOffset, rsgInfoFileOffset)
+                val packetOffset = rsbFile.readInt32LE(rsgInfoFileOffset.toLong())
+                rsbFile.writeInt32LE((packetOffset + fileOffset).toInt(), rsgInfoFileOffset.toLong())
             }
             // WriteHead
             rsbHeadInfo.version = version
@@ -687,7 +685,7 @@ object RSBFunction {
         val stringPool = mutableMapOf<String, Int>()
         fun throwInPool(poolKey: String): Int {
             if (!stringPool.containsKey(poolKey)) {
-                stringPool[poolKey] = part3Res.writeOffset
+                stringPool[poolKey] = part3Res.writeOffset.toInt()
                 part3Res.writeStringByEmpty(poolKey)
             }
             return stringPool[poolKey]!!
@@ -714,7 +712,7 @@ object RSBFunction {
                 part1Res.writeInt32LE(resourcesKeys.size)
                 for (rsKey in resourcesKeys) {
                     val idOffsetPart2 = part2Res.writeOffset
-                    part1Res.writeInt32LE(idOffsetPart2)
+                    part1Res.writeInt32LE(idOffsetPart2.toInt())
                     // Start writePart2
                     run {
                         part2Res.writeInt32LE(0x0)
@@ -753,8 +751,8 @@ object RSBFunction {
                             }
                             val ptxInfoEndOffsetPart2 = part2Res.writeOffset
                             part2Res.restoreWriteOffset()
-                            part2Res.writeInt32LE(ptxInfoEndOffsetPart2)
-                            part2Res.writeInt32LE(ptxInfoBeginOffsetPart2)
+                            part2Res.writeInt32LE(ptxInfoEndOffsetPart2.toInt())
+                            part2Res.writeInt32LE(ptxInfoBeginOffsetPart2.toInt())
                             part2Res.writeOffset = ptxInfoEndOffsetPart2
                         }
                         for ((key, value) in properties) {
@@ -769,14 +767,14 @@ object RSBFunction {
                 }
             }
         }
-        rsbHeadInfo.part1BeginOffset = rsbFile.writeOffset
-        rsbFile.writeUBytes(part1Res.toUBytes())
+        rsbHeadInfo.part1BeginOffset = rsbFile.writeOffset.toInt()
+        rsbFile.writeBytes(part1Res.toBytes())
         part1Res.close()
-        rsbHeadInfo.part2BeginOffset = rsbFile.writeOffset
-        rsbFile.writeUBytes(part2Res.toUBytes())
+        rsbHeadInfo.part2BeginOffset = rsbFile.writeOffset.toInt()
+        rsbFile.writeBytes(part2Res.toBytes())
         part2Res.close()
-        rsbHeadInfo.part3BeginOffset = rsbFile.writeOffset
-        rsbFile.writeUBytes(part3Res.toUBytes())
+        rsbHeadInfo.part3BeginOffset = rsbFile.writeOffset.toInt()
+        rsbFile.writeBytes(part3Res.toBytes())
         part3Res.close()
     }
 
@@ -910,15 +908,15 @@ object RSBFunction {
     fun rsbObfuscate(rsbFile: SenBuffer) {
         val headInfo = readHead(rsbFile)
         val rsgNumber = headInfo.rsgNumber
-        rsbFile.readOffset = headInfo.rsgInfoBeginOffset
+        rsbFile.readOffset = headInfo.rsgInfoBeginOffset.toLong()
         for (i in 0 until rsgNumber) {
             val startOffset = rsbFile.readOffset
-            val autopoolStartOffset = headInfo.autoPoolInfoBeginOffset + i * 152
+            val autoPoolStartOffset = headInfo.autoPoolInfoBeginOffset + i * 152
             rsbFile.writeNull(128, startOffset)
-            rsbFile.writeNull(128, autopoolStartOffset)
+            rsbFile.writeNull(128, autoPoolStartOffset.toLong())
             rsbFile.writeNull(4, startOffset + 132)
             val packetOffset = rsbFile.readUInt32LE(startOffset + 128)
-            rsbFile.writeNull(64, packetOffset.toInt())
+            rsbFile.writeNull(64, packetOffset.toInt().toLong())
             rsbFile.readOffset = startOffset + headInfo.rsgInfoEachLength
         }
     }
@@ -973,12 +971,12 @@ object RSBFunction {
                     continue
                 }
                 val packetFile =
-                    rsbFile.getUBytes(rsgInfoList[rsgInfoCount].rsgLength, rsgInfoList[rsgInfoCount].rsgOffset)
+                    rsbFile.getBytes(rsgInfoList[rsgInfoCount].rsgLength, rsgInfoList[rsgInfoCount].rsgOffset.toLong())
                 val rsgFile = SenBuffer(packetFile)
                 fixRSG(
                     rsgFile,
                     rsbHeadInfo.version,
-                    SenBuffer(rsgInfoList[rsgInfoCount].packetHeadInfo!!.toUByteArray())
+                    SenBuffer(rsgInfoList[rsgInfoCount].packetHeadInfo!!.toByteArray())
                 )
                 val packetInfo = RSGFunction.unpack(
                     rsgFile,
@@ -1051,7 +1049,7 @@ object RSBFunction {
             rsgFile.writeString("pgsr")
             rsgFile.writeInt32LE(version)
             rsgFile.writeNull(8)
-            rsgFile.writeUBytes(rsgInfo.toUBytes())
+            rsgFile.writeBytes(rsgInfo.toBytes())
             rsgFile.writeNull(16)
             rsgInfo.close()
         }
@@ -1075,7 +1073,7 @@ object RSBFunction {
         rsbHeadInfo: RSBHead,
         rsgInfoList: MutableList<RSGInfo>
     ) {
-        rsbFile.readOffset = rsbHeadInfo.rsgInfoBeginOffset
+        rsbFile.readOffset = rsbHeadInfo.rsgInfoBeginOffset.toLong()
         for (i in 0 until rsbHeadInfo.rsgNumber) {
             val startOffset = rsbFile.readOffset
             val rsgOffset = rsbFile.readInt32LE(startOffset + 128)
@@ -1094,7 +1092,7 @@ object RSBFunction {
                 rsbFile.readOffset = startOffset + rsbHeadInfo.rsgInfoEachLength
                 continue
             }
-            val packetHeadInfo = rsbFile.readUBytes(32, startOffset + 140)
+            val packetHeadInfo = rsbFile.readBytes(32, startOffset + 140)
             var rsgLength =
                 rsbFile.readInt32LE(startOffset + 148) + rsbFile.readInt32LE(startOffset + 152) + rsbFile.readInt32LE(
                     startOffset + 168
@@ -1120,7 +1118,7 @@ object RSBFunction {
 
     private fun isNotRSG(rsbFile: SenBuffer, rsgOffset: Int): Boolean {
         rsbFile.backupReadOffset()
-        val fileListOffset = rsbFile.readInt32LE(rsgOffset + 76)
+        val fileListOffset = rsbFile.readInt32LE((rsgOffset + 76).toLong())
         rsbFile.restoreReadOffset()
         return fileListOffset != 0x5C && fileListOffset != 0x1000
     }

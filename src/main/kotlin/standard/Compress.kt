@@ -12,10 +12,9 @@ enum class ZlibCompressionLevel {
     DEFLATED,
 }
 
-@OptIn(ExperimentalUnsignedTypes::class)
-fun uncompressZlib(zlibData: UByteArray): UByteArray {
+fun uncompressZlib(zlibData: ByteArray): ByteArray {
     val inflater = Inflater()
-    inflater.setInput(zlibData.toByteArray())
+    inflater.setInput(zlibData)
     val result = ByteArray(1024)
     val output = ByteBuffer.allocate(zlibData.size * 2)
     while (!inflater.finished()) {
@@ -23,11 +22,10 @@ fun uncompressZlib(zlibData: UByteArray): UByteArray {
         output.put(result, 0, count)
     }
     inflater.end()
-    return output.array().toUByteArray()
+    return output.array()
 }
 
-@OptIn(ExperimentalUnsignedTypes::class)
-fun compressZlib(dataStream: UByteArray, compressionLevel: ZlibCompressionLevel): UByteArray {
+fun compressZlib(dataStream: ByteArray, compressionLevel: ZlibCompressionLevel): ByteArray {
     val deflater = Deflater()
     when (compressionLevel) {
         ZlibCompressionLevel.NO_COMPRESSION -> deflater.setLevel(Deflater.NO_COMPRESSION)
@@ -36,7 +34,7 @@ fun compressZlib(dataStream: UByteArray, compressionLevel: ZlibCompressionLevel)
         ZlibCompressionLevel.BEST_COMPRESSION -> deflater.setLevel(Deflater.BEST_COMPRESSION)
         ZlibCompressionLevel.DEFLATED -> deflater.setLevel(Deflater.DEFLATED)
     }
-    deflater.setInput(dataStream.toByteArray())
+    deflater.setInput(dataStream)
     deflater.finish()
     val bytesOut = ByteArray(1024)
     val output = ByteBuffer.allocate(dataStream.size * 2)
@@ -45,5 +43,5 @@ fun compressZlib(dataStream: UByteArray, compressionLevel: ZlibCompressionLevel)
         output.put(bytesOut, 0, count)
     }
     deflater.end()
-    return output.array().toUByteArray()
+    return output.array()
 }

@@ -97,7 +97,7 @@ data class RSGInfo(
     var poolIndex: Int,
     var ptxNumber: Int,
     var ptxBeforeNumber: Int,
-    var packetHeadInfo: MutableList<UByte>? = null
+    var packetHeadInfo: MutableList<Byte>? = null
 )
 
 data class AutoPoolInfo(
@@ -199,26 +199,4 @@ data class RSBPathTemp(
     var key: Int,
     var poolIndex: Int,
     var positions: MutableList<PathPosition> = mutableListOf()
-)
-
-data class RSBPatchHeadExpand(
-    //0xC
-    var RSBAfterFileSize: Int,
-    //0xC
-    var RSBHeadSectionPatchSize: Int,
-    //0x18
-    var MD5RSBBefore: MutableList<UByte>,
-    //0x28
-    var RSGNumber: Int,
-    //0x2C
-    var RSBNeedPatch: Boolean
-)
-
-data class RSBPatchSubGroupInfo(
-    // 0x4
-    var packetPatchSize: Int,
-    // 0x8
-    var packetName: String,
-    // 0x80
-    var MD5Packet: MutableList<UByte>
 )

@@ -31,19 +31,17 @@ object RTONProcession {
 
     //---------------------- rton crypto start ----------------------
 
-    @OptIn(ExperimentalUnsignedTypes::class)
     fun decrypt(rtonFile: SenBuffer): SenBuffer {
         if (rtonFile.readInt16LE() != 0x10.toShort()) throw Exception("RTON is not encrypted")
-        return SenBuffer(decryptRTON(rtonFile.getUBytes(rtonFile.size - 2, 2)))
+        return SenBuffer(decryptRTON(rtonFile.getBytes((rtonFile.length - 2).toInt(), 2)))
     }
 
-    @OptIn(ExperimentalUnsignedTypes::class)
     fun encrypt(rtonFile: SenBuffer): SenBuffer {
-        val padSize = iv.size - ((rtonFile.size + iv.size - 1) % iv.size + 1)
-        rtonFile.writeNull(padSize)
+        val padSize = iv.size - ((rtonFile.length + iv.size - 1) % iv.size + 1)
+        rtonFile.writeNull(padSize.toInt())
         val senBuffer = SenBuffer()
         senBuffer.writeInt16LE(0x10)
-        senBuffer.writeUBytes(encryptRTON(rtonFile.toUBytes()))
+        senBuffer.writeBytes(encryptRTON(rtonFile.toBytes()))
         return senBuffer
     }
 
@@ -300,7 +298,6 @@ object RTONProcession {
         return false
     }
 
-    @OptIn(ExperimentalUnsignedTypes::class)
     private fun writeRTID(rtonFile: SenBuffer, str: String): Boolean {
         if (str.startsWith(RTID_BEGIN) && str.endsWith(RTID_END)) {
             if (str == RTID_0) {
@@ -321,7 +318,7 @@ object RTONProcession {
                     rtonFile.writeVarInt32(intStr[0].toInt())
                     val hexBytes = intStr[2].toByteArray(Charsets.UTF_8)
                     hexBytes.reverse()
-                    rtonFile.writeUBytes(hexBytes.toUByteArray())
+                    rtonFile.writeBytes(hexBytes)
                 } else {
                     rtonFile.writeUInt8(0x03.toUByte())
                     rtonFile.writeVarInt32(nameStr[1].length)

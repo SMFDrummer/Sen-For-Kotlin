@@ -7,7 +7,6 @@ import RTON.RTONProcession
 import standard.*
 import java.nio.file.Paths
 
-@OptIn(ExperimentalUnsignedTypes::class)
 object RSGFunction {
     private var part0List = mutableListOf<Part0List>()
 
@@ -54,7 +53,7 @@ object RSGFunction {
             if (!getPacketInfo) part0RawData = SenBuffer(checkZlib(rsgFile, headInfo, false))
             for (i in 0 until part0Length) {
                 if (!getPacketInfo) {
-                    fileData = SenBuffer(part0RawData.getUBytes(part0List[i].size, part0List[i].offset))
+                    fileData = SenBuffer(part0RawData.getBytes(part0List[i].size, part0List[i].offset.toLong()))
                     fileData.outFile(
                         Paths.get(
                             if (useResFolder) "$outFolder${s}res${s}${part0List[i].path}" else "$outFolder${s}${part0List[i].path}"
@@ -70,7 +69,7 @@ object RSGFunction {
             if (!getPacketInfo) part1RawData = SenBuffer(checkZlib(rsgFile, headInfo, true))
             for (i in 0 until part1Length) {
                 if (!getPacketInfo) {
-                    fileData = SenBuffer(part1RawData.getUBytes(part1List[i].size, part1List[i].offset))
+                    fileData = SenBuffer(part1RawData.getBytes(part1List[i].size, part1List[i].offset.toLong()))
                     fileData.outFile(
                         Paths.get(
                             if (useResFolder) "$outFolder${s}res${s}${part1List[i].path}" else "$outFolder${s}${part1List[i].path}"
@@ -112,7 +111,7 @@ object RSGFunction {
             throw Exception("Unsupported RSG version")
         }
         headInfo.version = version
-        rsgFile.readUBytes(8)
+        rsgFile.readBytes(8)
         val flags = rsgFile.readInt32LE()
         if (flags > 3 || flags < 0) {
             throw Exception("Invalid RSG compression flag")
@@ -126,14 +125,14 @@ object RSGFunction {
         headInfo.part1Offset = rsgFile.readInt32LE()
         headInfo.part1Zlib = rsgFile.readInt32LE()
         headInfo.part1Size = rsgFile.readInt32LE()
-        rsgFile.readUBytes(20)
+        rsgFile.readBytes(20)
         headInfo.fileListLength = rsgFile.readInt32LE()
         headInfo.fileListOffset = rsgFile.readInt32LE()
         return headInfo
     }
 
-    private fun checkZlib(rsgFile: SenBuffer, headInfo: RSGHead, atlasInfo: Boolean): UByteArray {
-        fun zlibHeaderCheck(rsgData: UByteArray): Boolean {
+    private fun checkZlib(rsgFile: SenBuffer, headInfo: RSGHead, atlasInfo: Boolean): ByteArray {
+        fun zlibHeaderCheck(rsgData: ByteArray): Boolean {
             for (i in ZlibLevelCompression.indices) {
                 if (rsgData[0].toInt() == ZlibLevelCompression[i][0] && rsgData[1].toInt() == ZlibLevelCompression[i][1]) {
                     return false
@@ -144,21 +143,21 @@ object RSGFunction {
 
         return if (atlasInfo) {
             if (headInfo.flags == 0 || headInfo.flags == 2 || zlibHeaderCheck(
-                    rsgFile.getUBytes(
+                    rsgFile.getBytes(
                         2,
-                        headInfo.part1Offset
+                        headInfo.part1Offset.toLong()
                     )
                 )
             ) {
-                rsgFile.getUBytes(headInfo.part1Size, headInfo.part1Offset)
+                rsgFile.getBytes(headInfo.part1Size, headInfo.part1Offset.toLong())
             } else {
-                uncompressZlib(rsgFile.getUBytes(headInfo.part1Zlib, headInfo.part1Offset))
+                uncompressZlib(rsgFile.getBytes(headInfo.part1Zlib, headInfo.part1Offset.toLong()))
             }
         } else {
-            if (headInfo.flags < 2 || zlibHeaderCheck(rsgFile.getUBytes(2, headInfo.part0Offset))) {
-                rsgFile.getUBytes(headInfo.part0Size, headInfo.part0Offset)
+            if (headInfo.flags < 2 || zlibHeaderCheck(rsgFile.getBytes(2, headInfo.part0Offset.toLong()))) {
+                rsgFile.getBytes(headInfo.part0Size, headInfo.part0Offset.toLong())
             } else {
-                uncompressZlib(rsgFile.getUBytes(headInfo.part0Zlib, headInfo.part0Offset))
+                uncompressZlib(rsgFile.getBytes(headInfo.part0Zlib, headInfo.part0Offset.toLong()))
             }
         }
     }
@@ -167,7 +166,7 @@ object RSGFunction {
         val nameDict = mutableListOf<NameDict>()
         var namePath = ""
         val tempOffset = headInfo.fileListOffset
-        rsgFile.readOffset = tempOffset
+        rsgFile.readOffset = tempOffset.toLong()
         val offsetLimit = tempOffset + headInfo.fileListLength
         while (rsgFile.readOffset < offsetLimit) {
             val characterByte = rsgFile.readString(1)
@@ -198,7 +197,7 @@ object RSGFunction {
                     )
                 }
                 for (i in nameDict.indices) {
-                    if (nameDict[i].offsetByte + tempOffset == rsgFile.readOffset) {
+                    if ((nameDict[i].offsetByte + tempOffset).toLong() == rsgFile.readOffset) {
                         namePath = nameDict[i].namePath
                         nameDict.removeAt(i)
                         break
@@ -294,7 +293,7 @@ object RSGFunction {
     ) {
         val pathTempLength = pathTemps.size
         val fileListBeginOffset = rsgFile.writeOffset
-        if (fileListBeginOffset != 92) {
+        if (fileListBeginOffset != 92.toLong()) {
             throw Exception("Invalid file list offset")
         }
         val dataGroup = SenBuffer()
@@ -318,11 +317,11 @@ object RSGFunction {
                     if (useResFolder) "$inFolder${s}res${s}${packetResInfo.path}" else "$inFolder${s}${packetResInfo.path}"
                 )
             )
-            val dataItem = senFile.toUBytes()
+            val dataItem = senFile.toBytes()
             senFile.close()
             val appendBytes = beautifyLengthForFile(dataItem.size)
             if (pathTemps[i].isAtlas) {
-                atlasGroup.writeUBytes(dataItem)
+                atlasGroup.writeBytes(dataItem)
                 atlasGroup.writeNull(appendBytes)
                 rsgFile.restoreWriteOffset()
                 rsgFile.writeInt32LE(1)
@@ -334,7 +333,7 @@ object RSGFunction {
                 rsgFile.writeInt32LE(packetResInfo.ptxInfo!!.height)
                 atlasPos += (dataItem.size + appendBytes)
             } else {
-                dataGroup.writeUBytes(dataItem)
+                dataGroup.writeBytes(dataItem)
                 dataGroup.writeNull(appendBytes)
                 rsgFile.restoreWriteOffset()
                 rsgFile.writeInt32LE(0)
@@ -344,50 +343,50 @@ object RSGFunction {
             }
         }
         val fileListLength = rsgFile.writeOffset - fileListBeginOffset
-        rsgFile.writeNull(beautifyLength(rsgFile.writeOffset))
+        rsgFile.writeNull(beautifyLength(rsgFile.writeOffset.toInt()))
         rsgFile.backupWriteOffset()
-        rsgFile.writeInt32LE(rsgFile.writeOffset, 0x14)
-        rsgFile.writeInt32LE(fileListLength, 0x48)
-        rsgFile.writeInt32LE(fileListBeginOffset)
+        rsgFile.writeInt32LE(rsgFile.writeOffset.toInt(), 0x14)
+        rsgFile.writeInt32LE(fileListLength.toInt(), 0x48)
+        rsgFile.writeInt32LE(fileListBeginOffset.toInt())
         rsgFile.restoreWriteOffset()
         compressor(rsgFile, dataGroup, atlasGroup, compressionFlags)
     }
 
     private fun compressor(rsgFile: SenBuffer, dataGroup: SenBuffer, atlasGroup: SenBuffer, compressionFlags: Int) {
-        fun dataWrite(dataBytes: UByteArray, flags: Int, isAtlas: Boolean) {
+        fun dataWrite(dataBytes: ByteArray, flags: Int, isAtlas: Boolean) {
             val part0Offset = rsgFile.writeOffset
             val part0Size = dataBytes.size
             if (flags < 2) {
-                rsgFile.writeUBytes(dataBytes.toUByteArray())
+                rsgFile.writeBytes(dataBytes)
                 rsgFile.backupWriteOffset()
-                rsgFile.writeInt32LE(part0Offset, 0x18)
+                rsgFile.writeInt32LE(part0Offset.toInt(), 0x18)
                 rsgFile.writeInt32LE(part0Size)
                 if (isAtlas) rsgFile.writeInt32LE(0)
                 else rsgFile.writeInt32LE(part0Size)
                 rsgFile.restoreWriteOffset()
             } else {
                 val zlibBytes = compressZlib(
-                    dataBytes.toUByteArray(),
+                    dataBytes,
                     if (flags == 3) ZlibCompressionLevel.BEST_COMPRESSION else ZlibCompressionLevel.DEFAULT_COMPRESSION
                 )
                 val zlibAppendLength = beautifyLength(zlibBytes.size)
-                rsgFile.writeUBytes(zlibBytes)
+                rsgFile.writeBytes(zlibBytes)
                 rsgFile.writeNull(zlibAppendLength)
                 val part0Zlib = zlibBytes.size + zlibAppendLength
                 rsgFile.backupWriteOffset()
-                rsgFile.writeInt32LE(part0Offset, 0x18)
+                rsgFile.writeInt32LE(part0Offset.toInt(), 0x18)
                 rsgFile.writeInt32LE(part0Zlib)
                 rsgFile.writeInt32LE(part0Size)
                 rsgFile.restoreWriteOffset()
             }
         }
-        if (dataGroup.size != 0) {
-            val dataBytes = dataGroup.toUBytes()
+        if (dataGroup.length != 0L) {
+            val dataBytes = dataGroup.toBytes()
             dataGroup.close()
             dataWrite(dataBytes, compressionFlags, false)
         }
-        if (atlasGroup.size != 0) {
-            val atlasBytes = atlasGroup.toUBytes()
+        if (atlasGroup.length != 0L) {
+            val atlasBytes = atlasGroup.toBytes()
             atlasGroup.close()
             val part1Offset: Int
             val part1Size = atlasBytes.size
@@ -396,31 +395,31 @@ object RSGFunction {
             dataEmpty.writeInt32BE(1)
             dataEmpty.writeNull(4088)
             if (compressionFlags == 0 || compressionFlags == 2) {
-                if (compressionFlags == 2 && dataGroup.size == 0) {
-                    dataWrite(dataEmpty.toUBytes(), 1, true)
+                if (compressionFlags == 2 && dataGroup.length == 0L) {
+                    dataWrite(dataEmpty.toBytes(), 1, true)
                 } else {
-                    dataWrite(ubyteArrayOf(), 1, true)
+                    dataWrite(byteArrayOf(), 1, true)
                 }
-                part1Offset = rsgFile.writeOffset
-                rsgFile.writeUBytes(atlasBytes)
+                part1Offset = rsgFile.writeOffset.toInt()
+                rsgFile.writeBytes(atlasBytes)
                 rsgFile.backupWriteOffset()
                 rsgFile.writeInt32LE(part1Offset, 0x28)
                 rsgFile.writeInt32LE(part1Size)
                 rsgFile.writeInt32LE(part1Size)
                 rsgFile.restoreWriteOffset()
             } else {
-                if (compressionFlags == 3 && dataGroup.size == 0) {
-                    dataWrite(dataEmpty.toUBytes(), 1, true)
+                if (compressionFlags == 3 && dataGroup.length == 0L) {
+                    dataWrite(dataEmpty.toBytes(), 1, true)
                 } else {
-                    dataWrite(ubyteArrayOf(), 1, true)
+                    dataWrite(byteArrayOf(), 1, true)
                 }
-                part1Offset = rsgFile.writeOffset
+                part1Offset = rsgFile.writeOffset.toInt()
                 val zlibBytes = compressZlib(
                     atlasBytes,
                     if (compressionFlags == 3) ZlibCompressionLevel.BEST_COMPRESSION else ZlibCompressionLevel.DEFAULT_COMPRESSION
                 )
                 val zlibAppendLength = beautifyLength(zlibBytes.size)
-                rsgFile.writeUBytes(zlibBytes)
+                rsgFile.writeBytes(zlibBytes)
                 rsgFile.writeNull(zlibAppendLength)
                 val part1Zlib = zlibBytes.size + zlibAppendLength
                 rsgFile.backupWriteOffset()
@@ -431,7 +430,7 @@ object RSGFunction {
             }
             dataEmpty.close()
         } else {
-            rsgFile.writeInt32LE(rsgFile.size, 0x28)
+            rsgFile.writeInt32LE(rsgFile.length.toInt(), 0x28)
         }
     }
 

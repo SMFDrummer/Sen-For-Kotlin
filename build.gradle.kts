@@ -3,7 +3,7 @@ plugins {
 }
 
 group = "smf.haruma"
-version = "1.1"
+version = "1.2"
 
 repositories {
     maven {
@@ -20,7 +20,6 @@ dependencies {
     testImplementation("org.jetbrains.kotlin:kotlin-test")
     implementation("com.alibaba.fastjson2:fastjson2:2.0.47")
     implementation("org.bouncycastle:bcprov-jdk18on:1.77")
-    implementation("commons-io:commons-io:2.16.0")
 }
 
 tasks.test {

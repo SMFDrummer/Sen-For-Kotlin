@@ -22,7 +22,6 @@ object RSGInit {
         writer.close()
     }
 
-    @OptIn(ExperimentalUnsignedTypes::class)
     fun pack(bundlePathString: String) {
         val bundlePath = Paths.get(bundlePathString)
         val packetInfoJSONPath = Paths.get(bundlePath.pathString + File.separator + "PacketInfo.json")
@@ -31,7 +30,7 @@ object RSGInit {
             bundlePath.parent.toString() + File.separator + bundlePath.fileName.toString().replace(".bundle", ".rsg")
         val rsgBytes = RSGFunction.pack(bundlePath.pathString, packetInfo)
         val writer = BufferedOutputStream(FileOutputStream(rsgPathString))
-        writer.write(rsgBytes.toUBytes().toByteArray())
+        writer.write(rsgBytes.toBytes())
         writer.flush()
         writer.close()
     }
