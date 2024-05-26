@@ -1,14 +1,11 @@
 package RTON
 
-import com.alibaba.fastjson2.JSON
-import com.alibaba.fastjson2.JSONArray
-import com.alibaba.fastjson2.JSONObject
-import com.alibaba.fastjson2.JSONWriter.Feature
+import kotlinx.serialization.ExperimentalSerializationApi
+import kotlinx.serialization.json.*
+import standard.Crypto
+import standard.JsonFeature
 import standard.SenBuffer
-import standard.decryptRTON
-import standard.encryptRTON
-import standard.iv
-import java.math.BigDecimal
+import standard.by
 import kotlin.io.path.pathString
 
 object RTONProcession {
@@ -33,15 +30,16 @@ object RTONProcession {
 
     fun decrypt(rtonFile: SenBuffer): SenBuffer {
         if (rtonFile.readInt16LE() != 0x10.toShort()) throw Exception("RTON is not encrypted")
-        return SenBuffer(decryptRTON(rtonFile.getBytes((rtonFile.length - 2).toInt(), 2)))
+        return SenBuffer(Crypto.RTON().decrypt(rtonFile.getBytes((rtonFile.length - 2).toInt(), 2)))
     }
 
     fun encrypt(rtonFile: SenBuffer): SenBuffer {
+        val iv = Crypto.RTON().iv.toByteArray()
         val padSize = iv.size - ((rtonFile.length + iv.size - 1) % iv.size + 1)
         rtonFile.writeNull(padSize.toInt())
         val senBuffer = SenBuffer()
         senBuffer.writeInt16LE(0x10)
-        senBuffer.writeBytes(encryptRTON(rtonFile.toBytes()))
+        senBuffer.writeBytes(Crypto.RTON().encrypt(rtonFile.toBytes()))
         return senBuffer
     }
 
@@ -50,10 +48,10 @@ object RTONProcession {
 
     //---------------------- rton 2 json start ----------------------
 
-    fun decode(rtonFile: SenBuffer, vararg features: Feature): String {
+    fun decode(rtonFile: SenBuffer): JsonObject {
         R0x90List.clear()
         R0x92List.clear()
-        var jsonObject = JSONObject()
+        var jsonObject = mutableMapOf<String, JsonElement>()
         val rtonMagic = rtonFile.readString(4)
         val rtonVer = rtonFile.readUInt32LE()
         if (rtonMagic != HEADER) {
@@ -72,7 +70,7 @@ object RTONProcession {
                 RTONListException.Version
             )
         }
-        jsonObject = readObject(rtonFile, jsonObject)
+        jsonObject = readObject(rtonFile, JsonObject(jsonObject)).toMutableMap()
         val EOF = rtonFile.readString(4)
         if (EOF != EOR) throw RTONDecodeException(
             "End of RTON file wrong",
@@ -80,73 +78,84 @@ object RTONProcession {
             "End of RTON must be DONE",
             RTONListException.Ends
         )
-        val jsonString = jsonObject.toJSONString(*features)
         R0x90List.clear()
         R0x92List.clear()
-        return jsonString
+        return JsonObject(jsonObject)
     }
 
-    private fun readByteCode(byte: UByte, valueType: Boolean, rtonFile: SenBuffer, jsonObject: JSONObject): Any? {
-        when (byte) {
-            0x0.toUByte() -> return false
-            0x1.toUByte() -> return true
-            0x2.toUByte() -> return if (valueType) null else "Null"
-            0x8.toUByte() -> return rtonFile.readInt8()
-            0x9.toUByte() -> return 0
-            0xA.toUByte() -> return rtonFile.readUInt8()
-            0xB.toUByte() -> return 0
-            0x10.toUByte() -> return rtonFile.readInt16LE()
-            0x11.toUByte() -> return 0
-            0x12.toUByte() -> return rtonFile.readUInt16LE()
-            0x13.toUByte() -> return 0
-            0x20.toUByte() -> return rtonFile.readInt32LE()
-            0x21.toUByte() -> return 0
-            0x22.toUByte() -> return rtonFile.readFloatLE()
-            0x23.toUByte() -> return 0.0F
-            0x24.toUByte() -> return rtonFile.readVarInt32()
-            0x25.toUByte() -> return rtonFile.readZigZag32()
-            0x26.toUByte() -> return rtonFile.readUInt32LE()
-            0x27.toUByte() -> return 0U
-            0x28.toUByte() -> return rtonFile.readVarUInt32()
-            0x40.toUByte() -> return rtonFile.readInt64LE()
-            0x41.toUByte() -> return 0L
-            0x42.toUByte() -> return rtonFile.readDoubleLE()
-            0x43.toUByte() -> return 0.0
-            0x44.toUByte() -> return rtonFile.readVarInt64()
-            0x45.toUByte() -> return rtonFile.readZigZag64()
-            0x46.toUByte() -> return rtonFile.readUInt64LE()
-            0x47.toUByte() -> return 0UL
-            0x48.toUByte() -> return rtonFile.readVarUInt64()
-            0x81.toUByte() -> return if (valueType) rtonFile.readString(rtonFile.readVarInt32()) else rtonFile.readString(
-                rtonFile.readVarInt32()
+    @OptIn(ExperimentalSerializationApi::class)
+    private fun readByteCode(
+        byte: UByte,
+        valueType: Boolean,
+        rtonFile: SenBuffer,
+        jsonObject: JsonObject
+    ): JsonElement {
+        return when (byte) {
+            0x0.toUByte() -> JsonPrimitive(false)
+            0x1.toUByte() -> JsonPrimitive(true)
+            0x2.toUByte() -> JsonPrimitive(if (valueType) null else "Null")
+            0x8.toUByte() -> JsonPrimitive(rtonFile.readInt8())
+            0x9.toUByte() -> JsonPrimitive(0)
+            0xA.toUByte() -> JsonPrimitive(rtonFile.readUInt8())
+            0xB.toUByte() -> JsonPrimitive(0)
+            0x10.toUByte() -> JsonPrimitive(rtonFile.readInt16LE())
+            0x11.toUByte() -> JsonPrimitive(0)
+            0x12.toUByte() -> JsonPrimitive(rtonFile.readUInt16LE())
+            0x13.toUByte() -> JsonPrimitive(0)
+            0x20.toUByte() -> JsonPrimitive(rtonFile.readInt32LE())
+            0x21.toUByte() -> JsonPrimitive(0)
+            0x22.toUByte() -> JsonPrimitive(rtonFile.readFloatLE())
+            0x23.toUByte() -> JsonPrimitive(0.0F)
+            0x24.toUByte() -> JsonPrimitive(rtonFile.readVarInt32())
+            0x25.toUByte() -> JsonPrimitive(rtonFile.readZigZag32())
+            0x26.toUByte() -> JsonPrimitive(rtonFile.readUInt32LE())
+            0x27.toUByte() -> JsonPrimitive(0U)
+            0x28.toUByte() -> JsonPrimitive(rtonFile.readVarUInt32())
+            0x40.toUByte() -> JsonPrimitive(rtonFile.readInt64LE())
+            0x41.toUByte() -> JsonPrimitive(0L)
+            0x42.toUByte() -> JsonPrimitive(rtonFile.readDoubleLE())
+            0x43.toUByte() -> JsonPrimitive(0.0)
+            0x44.toUByte() -> JsonPrimitive(rtonFile.readVarInt64())
+            0x45.toUByte() -> JsonPrimitive(rtonFile.readZigZag64())
+            0x46.toUByte() -> JsonPrimitive(rtonFile.readUInt64LE())
+            0x47.toUByte() -> JsonPrimitive(0UL)
+            0x48.toUByte() -> JsonPrimitive(rtonFile.readVarUInt64())
+            0x81.toUByte() -> JsonPrimitive(
+                if (valueType) rtonFile.readString(rtonFile.readVarInt32()) else rtonFile.readString(
+                    rtonFile.readVarInt32()
+                )
             )
 
             0x82.toUByte() -> {
                 rtonFile.readVarInt32()
-                return if (valueType) rtonFile.readString(rtonFile.readVarInt32()) else rtonFile.readString(rtonFile.readVarInt32())
+                JsonPrimitive(
+                    if (valueType) rtonFile.readString(rtonFile.readVarInt32()) else rtonFile.readString(
+                        rtonFile.readVarInt32()
+                    )
+                )
             }
 
-            0x83.toUByte() -> return if (valueType) readRTID(rtonFile) else readRTID(rtonFile)
-            0x84.toUByte() -> return if (valueType) RTID_0 else RTID_0
-            0x85.toUByte() -> return readObject(rtonFile, jsonObject)
-            0x86.toUByte() -> return readArray(rtonFile, jsonObject)
-            0x87.toUByte() -> return if (valueType) readBinary(rtonFile) else readBinary(rtonFile)
+            0x83.toUByte() -> JsonPrimitive(if (valueType) readRTID(rtonFile) else readRTID(rtonFile))
+            0x84.toUByte() -> JsonPrimitive(if (valueType) RTID_0 else RTID_0)
+            0x85.toUByte() -> readObject(rtonFile, jsonObject)
+            0x86.toUByte() -> readArray(rtonFile, jsonObject)
+            0x87.toUByte() -> JsonPrimitive(if (valueType) readBinary(rtonFile) else readBinary(rtonFile))
             0x90.toUByte() -> {
                 val num = rtonFile.readVarInt32()
                 tempString = rtonFile.readString(num)
                 R0x90List.add(tempString)
-                return if (valueType) tempString else tempString
+                JsonPrimitive(if (valueType) tempString else tempString)
             }
 
-            0x91.toUByte() -> return if (valueType) R0x90List[rtonFile.readVarInt32()] else R0x90List[rtonFile.readVarInt32()]
+            0x91.toUByte() -> JsonPrimitive(if (valueType) R0x90List[rtonFile.readVarInt32()] else R0x90List[rtonFile.readVarInt32()])
             0x92.toUByte() -> {
                 rtonFile.readVarInt32()
                 tempString = rtonFile.readString(rtonFile.readVarInt32())
                 R0x92List.add(tempString)
-                return if (valueType) tempString else tempString
+                JsonPrimitive(if (valueType) tempString else tempString)
             }
 
-            0x93.toUByte() -> return if (valueType) R0x92List[rtonFile.readVarInt32()] else R0x92List[rtonFile.readVarInt32()]
+            0x93.toUByte() -> JsonPrimitive(if (valueType) R0x92List[rtonFile.readVarInt32()] else R0x92List[rtonFile.readVarInt32()])
             0xB0.toUByte(),
             0xB1.toUByte(),
             0xB2.toUByte(),
@@ -160,7 +169,7 @@ object RTONProcession {
             0xBA.toUByte(),
             0xBB.toUByte() -> throw RTONException("Not a RTON", rtonFile.filePath?.pathString ?: "Undefined")
 
-            0xBC.toUByte() -> return rtonFile.readUInt8() != 0.toUByte()
+            0xBC.toUByte() -> JsonPrimitive(rtonFile.readUInt8() != 0.toUByte())
             else -> throw RTONException(
                 "Bytecode Error: $byte in offset: ${rtonFile.readOffset}",
                 rtonFile.filePath?.pathString ?: "Undefined"
@@ -207,20 +216,20 @@ object RTONProcession {
         }
     }
 
-    private fun readObject(rtonFile: SenBuffer, jsonObject: JSONObject): JSONObject {
-        val tempObject = JSONObject()
+    private fun readObject(rtonFile: SenBuffer, jsonObject: JsonObject): JsonObject {
+        val tempObject = mutableMapOf<String, JsonElement>()
         var byteCode = rtonFile.readUInt8()
         while (byteCode != 0xFF.toUByte()) {
-            val key = readByteCode(byteCode, false, rtonFile, jsonObject)
+            val key = readByteCode(byteCode, false, rtonFile, jsonObject) as JsonPrimitive
             val value = readByteCode(rtonFile.readUInt8(), true, rtonFile, jsonObject)
             byteCode = rtonFile.readUInt8()
-            tempObject[key.toString()] = value
+            tempObject[key.content] = value
         }
-        return tempObject
+        return JsonObject(tempObject)
     }
 
-    private fun readArray(rtonFile: SenBuffer, jsonObject: JSONObject): JSONArray {
-        val tempArray = JSONArray()
+    private fun readArray(rtonFile: SenBuffer, jsonObject: JsonObject): JsonArray {
+        val tempArray = mutableListOf<JsonElement>()
         var byteCode = rtonFile.readUInt8()
         if (byteCode != 0xFD.toUByte()) throw RTONException("Not a RTON", rtonFile.filePath?.pathString ?: "Undefined")
         val number = rtonFile.readVarInt32()
@@ -230,7 +239,7 @@ object RTONProcession {
         }
         byteCode = rtonFile.readUInt8()
         if (byteCode != 0xFE.toUByte()) throw RTONException("Not a RTON", rtonFile.filePath?.pathString ?: "Undefined")
-        return tempArray
+        return JsonArray(tempArray)
     }
 
     //----------------------- rton 2 json end -----------------------
@@ -241,7 +250,7 @@ object RTONProcession {
     fun encode(jsonString: String): SenBuffer {
         val r0x90 = StringPool()
         val r0x92 = StringPool()
-        val jsonObject = JSON.parseObject(jsonString)
+        val jsonObject = Json.by(JsonFeature.AllowTrailingComma).parseToJsonElement(jsonString) as JsonObject
         val rtonFile = SenBuffer()
         rtonFile.writeString(HEADER)
         rtonFile.writeUInt32LE(VERSION)
@@ -259,9 +268,11 @@ object RTONProcession {
 
     private fun writeString(rtonFile: SenBuffer, str: String?, r0x90: StringPool, r0x92: StringPool) {
         if (str == NULL) rtonFile.writeUInt8(2.toUByte())
-        else if (writeRTID(rtonFile, str)) TODO()
-        else if (writeBinary(rtonFile, str)) TODO()
-        else if (isASCII(str)) {
+        else if (writeRTID(rtonFile, str)) {
+            /* must do nothing */
+        } else if (writeBinary(rtonFile, str)) {
+            /* must do nothing */
+        } else if (isASCII(str)) {
             if (r0x90.exist(str)) {
                 rtonFile.writeUInt8(0x91.toUByte())
                 rtonFile.writeVarInt32(r0x90[str]!!.index)
@@ -332,98 +343,102 @@ object RTONProcession {
         return false
     }
 
-    private fun writeNumber(rtonFile: SenBuffer, value: Number) {
-        when (value) {
-            is Float,
-            is Double,
-            is BigDecimal -> {
-                val doubleValue = value.toDouble()
-                if (doubleValue == 0.0) {
-                    rtonFile.writeUInt8(0x23.toUByte())
+    private fun writeNumber(rtonFile: SenBuffer, value: JsonPrimitive) {
+        if (value.content.indexOf('.') > -1) {
+            val doubleVal = value.double
+            if (doubleVal == 0.0) {
+                rtonFile.writeUInt8(0x23.toUByte())
+            } else {
+                val floatVal = value.float
+                if (floatVal.toDouble() == doubleVal) {
+                    rtonFile.writeUInt8(0x22.toUByte())
+                    rtonFile.writeFloatLE(floatVal)
                 } else {
-                    val floatValue = value.toFloat()
-                    if (floatValue.toDouble() == doubleValue) {
-                        rtonFile.writeUInt8(0x22.toUByte())
-                        rtonFile.writeFloatLE(floatValue)
+                    rtonFile.writeUInt8(0x42.toUByte())
+                    rtonFile.writeDoubleLE(doubleVal)
+                }
+            }
+        } else {
+            val longVal = value.longOrNull
+            if (longVal != null) {
+                if (longVal == 0L) {
+                    rtonFile.writeUInt8(0x21.toUByte())
+                } else if (longVal > 0L) {
+                    if (longVal <= Int.MAX_VALUE) {
+                        rtonFile.writeUInt8(0x24.toUByte())
+                        rtonFile.writeVarInt32(longVal.toInt())
                     } else {
-                        rtonFile.writeUInt8(0x42.toUByte())
-                        rtonFile.writeDoubleLE(doubleValue)
+                        rtonFile.writeUInt8(0x44.toUByte())
+                        rtonFile.writeVarInt64(longVal)
+                    }
+                } else {
+                    if (longVal + 0x40000000 >= 0) {
+                        rtonFile.writeUInt8(0x25.toUByte())
+                        rtonFile.writeZigZag32(longVal.toInt())
+                    } else {
+                        rtonFile.writeUInt8(0x45.toUByte())
+                        rtonFile.writeZigZag64(longVal)
                     }
                 }
-            }
-
-            is Int,
-            is Long -> {
-                val longValue = value.toLong()
-                when {
-                    longValue == 0L -> rtonFile.writeUInt8(0x21.toUByte())
-                    longValue > 0 -> {
-                        when {
-                            longValue <= Int.MAX_VALUE -> {
-                                rtonFile.writeUInt8(0x24.toUByte())
-                                rtonFile.writeVarInt32(longValue.toInt())
-                            }
-
-                            else -> {
-                                rtonFile.writeUInt8(0x44.toUByte())
-                                rtonFile.writeVarInt64(longValue)
-                            }
-                        }
-                    }
-
-                    else -> {
-                        if (longValue + 0x40000000 >= 0) {
-                            rtonFile.writeUInt8(0x25.toUByte())
-                            rtonFile.writeZigZag32(longValue.toInt())
-                        } else {
-                            rtonFile.writeUInt8(0x45.toUByte())
-                            rtonFile.writeZigZag64(longValue)
-                        }
-                    }
-                }
-            }
-
-            else -> {
-                val v = value.toString().toULong()
+            } else {
+                val v = value.content.toULong()
                 rtonFile.writeUInt8(0x46.toUByte())
                 rtonFile.writeUInt64LE(v)
             }
         }
     }
 
-    private fun writeValueJSON(rtonFile: SenBuffer, value: Any?, r0x90: StringPool, r0x92: StringPool) {
+    private fun writeValueJson(rtonFile: SenBuffer, value: JsonElement, r0x90: StringPool, r0x92: StringPool) {
+        fun String.isNumber(): Boolean {
+            return try {
+                this.toDouble()
+                true
+            } catch (_: Exception) {
+                false
+            }
+        }
         when (value) {
-            is JSONObject -> {
+            is JsonObject -> {
                 rtonFile.writeUInt8(0x85.toUByte())
                 writeObject(rtonFile, value, r0x90, r0x92)
             }
 
-            is JSONArray -> {
+            is JsonArray -> {
                 rtonFile.writeUInt8(0x86.toUByte())
                 writeArray(rtonFile, value, r0x90, r0x92)
             }
 
-            is Nothing? -> rtonFile.writeUInt8(0x84.toUByte())
-            is Boolean -> rtonFile.writeBool(value)
-            is String -> writeString(rtonFile, value.toString(), r0x90, r0x92)
-            is Number -> writeNumber(rtonFile, value)
+            is JsonPrimitive -> {
+                when {
+                    value is JsonNull -> rtonFile.writeUInt8(0x84.toUByte())
+                    value.booleanOrNull != null -> rtonFile.writeBool(value.boolean)
+                    value.content.isNumber() -> writeNumber(rtonFile, value)
+                    value.isString -> writeString(rtonFile, value.content, r0x90, r0x92)
+
+                    else -> throw RTONException(
+                        "Unexpected JsonPrimitive: $value",
+                        rtonFile.filePath?.pathString ?: "Undefined"
+                    )
+                }
+            }
+
             else -> throw RTONException("Not a RTON", rtonFile.filePath?.pathString ?: "Undefined")
         }
     }
 
-    private fun writeObject(rtonFile: SenBuffer, jsonObject: JSONObject, r0x90: StringPool, r0x92: StringPool) {
+    private fun writeObject(rtonFile: SenBuffer, jsonObject: JsonObject, r0x90: StringPool, r0x92: StringPool) {
         jsonObject.entries.forEach {
             writeString(rtonFile, it.key, r0x90, r0x92)
-            writeValueJSON(rtonFile, it.value, r0x90, r0x92)
+            writeValueJson(rtonFile, it.value, r0x90, r0x92)
         }
         rtonFile.writeUInt8(0xFF.toUByte())
     }
 
-    private fun writeArray(rtonFile: SenBuffer, jsonArray: JSONArray, r0x90: StringPool, r0x92: StringPool) {
+    private fun writeArray(rtonFile: SenBuffer, jsonArray: JsonArray, r0x90: StringPool, r0x92: StringPool) {
         rtonFile.writeUInt8(0xFD.toUByte())
         val arrayLength = jsonArray.size
         rtonFile.writeVarInt32(arrayLength)
-        for (i in 0 until arrayLength) writeValueJSON(rtonFile, jsonArray[i], r0x90, r0x92)
+        for (i in 0 until arrayLength) writeValueJson(rtonFile, jsonArray[i], r0x90, r0x92)
         rtonFile.writeUInt8(0xFE.toUByte())
     }
 }

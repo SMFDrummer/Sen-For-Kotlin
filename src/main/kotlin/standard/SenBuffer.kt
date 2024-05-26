@@ -1,20 +1,21 @@
 package standard
 
 import java.io.BufferedOutputStream
-import java.io.File
 import java.io.FileOutputStream
 import java.io.RandomAccessFile
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.nio.charset.Charset
 import java.nio.file.Path
+import java.nio.file.Paths
 import java.util.*
+import kotlin.io.path.pathString
 
-val s: String = File.separator
+val USER_DIR: String = System.getProperty("user.dir")
 
 @Suppress("unused", "MemberVisibilityCanBePrivate")
 class SenBuffer {
-    private val tempDir = File("${System.getProperty("user.dir")}${s}temp")
+    private val tempDir = Paths.get(USER_DIR, "temp").toFile()
 
     init {
         if (!tempDir.exists()) {
@@ -23,7 +24,7 @@ class SenBuffer {
     }
 
     var baseStream: RandomAccessFile
-    val tempFile = File("${System.getProperty("user.dir")}${s}temp${s}${UUID.randomUUID()}")
+    val tempFile = Paths.get(USER_DIR, "temp", UUID.randomUUID().toString()).toFile()
 
     var length: Long
         get() = baseStream.length()
@@ -794,7 +795,7 @@ class SenBuffer {
         val fileName = UUID.randomUUID()
         baseStream.seek(begin)
         baseStream.read(buffer, 0, length.toInt())
-        baseStream = RandomAccessFile(fileName.toString(),"rw").apply { write(buffer) }
+        baseStream = RandomAccessFile(fileName.toString(), "rw").apply { write(buffer) }
         return
     }
 
@@ -920,11 +921,7 @@ class SenBuffer {
     }
 
     fun createDirectory(outputPath: Path) {
-        val path = outputPath.parent.toString()
-        val directory = File(path)
-        if (!directory.exists()) {
-            directory.mkdirs()
-        }
+        outputPath.toFile().parentFile?.mkdirs()
     }
 
     fun outFile(outputPath: Path) {
@@ -943,7 +940,8 @@ class SenBuffer {
     }
 
     fun saveFile(path: Path) {
-        BufferedOutputStream(FileOutputStream(path.toString())).use { bufferedStream -> bufferedStream.write(toBytes()) }
+        BufferedOutputStream(FileOutputStream(path.pathString)).use { it.write(toBytes()); it.flush() }
+        flush()
         close()
     }
 

@@ -1,25 +1,23 @@
 plugins {
-    kotlin("jvm") version "1.9.22"
+    kotlin("jvm") version "2.0.0"
+    kotlin("plugin.serialization") version "2.0.0"
 }
 
 group = "smf.haruma"
-version = "1.2"
+version = "1.6"
 
 repositories {
-    maven {
-        setUrl("https://maven.aliyun.com/repository/public/")
-    }
-    maven {
-        setUrl("https://maven.aliyun.com/repository/central")
-    }
+    maven("https://maven.aliyun.com/repository/public/")
+    maven("https://maven.aliyun.com/repository/central")
     mavenLocal()
     mavenCentral()
 }
 
 dependencies {
     testImplementation("org.jetbrains.kotlin:kotlin-test")
-    implementation("com.alibaba.fastjson2:fastjson2:2.0.47")
-    implementation("org.bouncycastle:bcprov-jdk18on:1.77")
+    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.0-RC")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.8.1")
+    implementation("org.bouncycastle:bcprov-jdk18on:1.78.1")
 }
 
 tasks.test {
@@ -27,12 +25,4 @@ tasks.test {
 }
 kotlin {
     jvmToolchain(21)
-}
-tasks.jar {
-    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
-    from(configurations.runtimeClasspath.get().map { if (it.isDirectory) it else zipTree(it) }) {
-        exclude("META-INF/*.SF")
-        exclude("META-INF/*.DSA")
-        exclude("META-INF/*.RSA")
-    }
 }

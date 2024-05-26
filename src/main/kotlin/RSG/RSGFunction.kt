@@ -4,8 +4,10 @@ import RSB.PTXProperty
 import RSB.RSBPacketInfo
 import RSB.RSBResInfo
 import RTON.RTONProcession
-import standard.*
+import standard.Crypto
+import standard.SenBuffer
 import java.nio.file.Paths
+import java.util.zip.Deflater
 
 object RSGFunction {
     private var part0List = mutableListOf<Part0List>()
@@ -55,8 +57,9 @@ object RSGFunction {
                 if (!getPacketInfo) {
                     fileData = SenBuffer(part0RawData.getBytes(part0List[i].size, part0List[i].offset.toLong()))
                     fileData.outFile(
-                        Paths.get(
-                            if (useResFolder) "$outFolder${s}res${s}${part0List[i].path}" else "$outFolder${s}${part0List[i].path}"
+                        if (useResFolder) Paths.get(outFolder, "res", part0List[i].path) else Paths.get(
+                            outFolder,
+                            part0List[i].path
                         )
                     )
                 }
@@ -71,8 +74,9 @@ object RSGFunction {
                 if (!getPacketInfo) {
                     fileData = SenBuffer(part1RawData.getBytes(part1List[i].size, part1List[i].offset.toLong()))
                     fileData.outFile(
-                        Paths.get(
-                            if (useResFolder) "$outFolder${s}res${s}${part1List[i].path}" else "$outFolder${s}${part1List[i].path}"
+                        if (useResFolder) Paths.get(outFolder, "res", part1List[i].path) else Paths.get(
+                            outFolder,
+                            part1List[i].path
                         )
                     )
                 }
@@ -151,13 +155,13 @@ object RSGFunction {
             ) {
                 rsgFile.getBytes(headInfo.part1Size, headInfo.part1Offset.toLong())
             } else {
-                uncompressZlib(rsgFile.getBytes(headInfo.part1Zlib, headInfo.part1Offset.toLong()))
+                Crypto.Zlib().decompress(rsgFile.getBytes(headInfo.part1Zlib, headInfo.part1Offset.toLong()))
             }
         } else {
             if (headInfo.flags < 2 || zlibHeaderCheck(rsgFile.getBytes(2, headInfo.part0Offset.toLong()))) {
                 rsgFile.getBytes(headInfo.part0Size, headInfo.part0Offset.toLong())
             } else {
-                uncompressZlib(rsgFile.getBytes(headInfo.part0Zlib, headInfo.part0Offset.toLong()))
+                Crypto.Zlib().decompress(rsgFile.getBytes(headInfo.part0Zlib, headInfo.part0Offset.toLong()))
             }
         }
     }
@@ -313,8 +317,9 @@ object RSGFunction {
             }
 
             val senFile = SenBuffer(
-                Paths.get(
-                    if (useResFolder) "$inFolder${s}res${s}${packetResInfo.path}" else "$inFolder${s}${packetResInfo.path}"
+                if (useResFolder) Paths.get(inFolder, "res", packetResInfo.path) else Paths.get(
+                    inFolder,
+                    packetResInfo.path
                 )
             )
             val dataItem = senFile.toBytes()
@@ -365,10 +370,9 @@ object RSGFunction {
                 else rsgFile.writeInt32LE(part0Size)
                 rsgFile.restoreWriteOffset()
             } else {
-                val zlibBytes = compressZlib(
-                    dataBytes,
-                    if (flags == 3) ZlibCompressionLevel.BEST_COMPRESSION else ZlibCompressionLevel.DEFAULT_COMPRESSION
-                )
+                val zlibBytes = Crypto.Zlib(
+                    if (flags == 3) Deflater.BEST_COMPRESSION else Deflater.DEFAULT_COMPRESSION
+                ).compress(dataBytes)
                 val zlibAppendLength = beautifyLength(zlibBytes.size)
                 rsgFile.writeBytes(zlibBytes)
                 rsgFile.writeNull(zlibAppendLength)
@@ -414,10 +418,9 @@ object RSGFunction {
                     dataWrite(byteArrayOf(), 1, true)
                 }
                 part1Offset = rsgFile.writeOffset.toInt()
-                val zlibBytes = compressZlib(
-                    atlasBytes,
-                    if (compressionFlags == 3) ZlibCompressionLevel.BEST_COMPRESSION else ZlibCompressionLevel.DEFAULT_COMPRESSION
-                )
+                val zlibBytes = Crypto.Zlib(
+                    if (compressionFlags == 3) Deflater.BEST_COMPRESSION else Deflater.DEFAULT_COMPRESSION
+                ).compress(atlasBytes)
                 val zlibAppendLength = beautifyLength(zlibBytes.size)
                 rsgFile.writeBytes(zlibBytes)
                 rsgFile.writeNull(zlibAppendLength)

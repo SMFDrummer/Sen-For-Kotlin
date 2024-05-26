@@ -2,7 +2,9 @@ package RSB
 
 import RSG.PTXInfo
 import RSG.PathPosition
+import kotlinx.serialization.Serializable
 
+@Serializable
 data class ManifestInfo(
     val version: Int,
     val ptxInfoSize: Int,
@@ -10,35 +12,41 @@ data class ManifestInfo(
     val group: MutableList<GroupInfo>
 )
 
+@Serializable
 data class RSBPathInfo(
     val rsgs: MutableList<String>,
     val packetPath: String
 )
 
+@Serializable
 data class GroupInfo(
     val name: String,
     val isComposite: Boolean,
     val subGroup: MutableList<SubGroupInfo>
 )
 
+@Serializable
 data class SubGroupInfo(
     val namePacket: String,
     val category: MutableList<String>,
     val packetInfo: RSBPacketInfo
 )
 
+@Serializable
 data class RSBPacketInfo(
     val version: Int,
     val compressionFlags: Int,
     val res: MutableList<RSBResInfo>
 )
 
+@Serializable
 data class RSBResInfo(
     val path: String,
     var ptxInfo: PTXInfo? = null,
     var ptxProperty: PTXProperty? = null
 )
 
+@Serializable
 data class PTXProperty(
     val format: Int,
     val pitch: Int,
@@ -46,6 +54,7 @@ data class PTXProperty(
     val alphaFormat: Int? = null
 )
 
+@Serializable
 data class RSBHead(
     val header: String = "1bsr",
     var version: Int = 0,
@@ -73,11 +82,13 @@ data class RSBHead(
     var part3BeginOffset: Int = 0
 )
 
+@Serializable
 data class FileListInfo(
     var namePath: String,
     var poolIndex: Int
 )
 
+@Serializable
 data class CompositeInfo(
     var name: String,
     var isComposite: Boolean,
@@ -85,11 +96,13 @@ data class CompositeInfo(
     var packetInfo: MutableList<CompositePacketInfo>? = null
 )
 
+@Serializable
 data class CompositePacketInfo(
     var packetIndex: Int,
     var category: MutableList<String>
 )
 
+@Serializable
 data class RSGInfo(
     var name: String,
     var rsgOffset: Int,
@@ -100,12 +113,14 @@ data class RSGInfo(
     var packetHeadInfo: MutableList<Byte>? = null
 )
 
+@Serializable
 data class AutoPoolInfo(
     var name: String,
     var part0Size: Int,
     var part1Size: Int
 )
 
+@Serializable
 data class RSBPTXInfo(
     var ptxIndex: Int,
     var width: Int,
@@ -116,21 +131,25 @@ data class RSBPTXInfo(
     var alphaFormat: Int? = null
 )
 
+@Serializable
 data class ResourcesDescription(
     var groups: MutableMap<String, DescriptionGroup>
 )
 
+@Serializable
 data class DescriptionGroup(
     var composite: Boolean,
     var subgroups: MutableMap<String, DescriptionSubGroup>
 )
 
+@Serializable
 data class DescriptionSubGroup(
     var res: String,
     var language: String,
     var resources: MutableMap<String, DescriptionResources>
 )
 
+@Serializable
 data class DescriptionResources(
     var type: Int,
     var path: String,
@@ -138,6 +157,7 @@ data class DescriptionResources(
     var properties: MutableMap<String, String>
 )
 
+@Serializable
 data class PropertiesPTXInfo(
     var imagetype: String,
     var aflags: String,
@@ -152,12 +172,14 @@ data class PropertiesPTXInfo(
     var parent: String
 )
 
+@Serializable
 data class CompositeResourcesDescriptionInfo(
     var id: String,
     var rsgNumber: Int,
     var rsgInfoList: MutableList<ResourcesRSGInfo>
 )
 
+@Serializable
 data class ResourcesRSGInfo(
     var resolutionRatio: Int,
     var language: String,
@@ -166,6 +188,7 @@ data class ResourcesRSGInfo(
     var resourcesInfoList: MutableList<ResourcesInfo>
 )
 
+@Serializable
 data class ResourcesInfo(
     var infoOffsetPart2: Int,
     var propertiesNumber: Int? = null,
@@ -175,6 +198,7 @@ data class ResourcesInfo(
     var propertiesInfoList: MutableList<ResourcesPropertiesInfo>? = null
 )
 
+@Serializable
 data class ResourcesPTXInfo(
     var imagetype: UShort,
     var aflags: UShort,
@@ -189,11 +213,13 @@ data class ResourcesPTXInfo(
     var parent: String?
 )
 
+@Serializable
 data class ResourcesPropertiesInfo(
     var key: String,
     var value: String
 )
 
+@Serializable
 data class RSBPathTemp(
     var pathSlice: String,
     var key: Int,

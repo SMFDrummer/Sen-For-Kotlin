@@ -3,15 +3,17 @@ package RSB
 import RSG.NameDict
 import RSG.PathPosition
 import RSG.RSGFunction
-import com.alibaba.fastjson2.JSON
-import com.alibaba.fastjson2.JSONWriter
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.Json
+import standard.FileUtil
+import standard.JsonFeature
 import standard.SenBuffer
-import standard.s
+import standard.by
 import java.io.File
-import java.io.FileWriter
-import java.nio.file.Files
 import java.nio.file.Paths
 import java.util.*
+import kotlin.io.path.pathString
+
 object RSBFunction {
     fun unpack(rsbFile: SenBuffer, outFolder: String): ManifestInfo {
         val rsbHeadInfo = readHead(rsbFile)
@@ -124,7 +126,7 @@ object RSBFunction {
                     }
                     if (fileList[h].poolIndex > packetIndex) break
                 }
-                RSGFile.outFile(Paths.get("$outFolder${s}packet${s}${rsgInfoList[rsgInfoCount].name}.rsg"))
+                RSGFile.outFile(Paths.get(outFolder, "packet", rsgInfoList[rsgInfoCount].name + ".rsg"))
                 val packetInfoList = RSBPacketInfo(
                     version = rsbFile.readInt32LE((rsgInfoList[rsgInfoCount].rsgOffset + 4).toLong()),
                     compressionFlags = rsbFile.readInt32LE((rsgInfoList[rsgInfoCount].rsgOffset + 16).toLong()),
@@ -154,7 +156,7 @@ object RSBFunction {
             ptxInfoSize = rsbHeadInfo.ptxInfoEachLength,
             path = RSBPathInfo(
                 rsgs = rsgNameList.toMutableList(),
-                packetPath = "$outFolder${s}packet"
+                packetPath = Paths.get(outFolder, "packet").pathString
             ),
             group = groupList.toMutableList()
         )
@@ -264,18 +266,11 @@ object RSBFunction {
             RSBFile.restoreReadOffset()
             i++
         }
-        val outFolderDir = File(outFolder)
-        val writer = FileWriter("$outFolder${s}description.json")
         val resourcesDescription = ResourcesDescription(groups = DescriptionGroup)
-        val json = JSON.toJSONString(
-            resourcesDescription,
-            JSONWriter.Feature.WriteMapNullValue,
-            JSONWriter.Feature.PrettyFormat
+        FileUtil.writeContent(
+            filePath = Paths.get(outFolder, "description.json").pathString,
+            content = Json.by(JsonFeature.PrettyPrint, JsonFeature.ExplicitNulls).encodeToString(resourcesDescription)
         )
-        if (!outFolderDir.exists()) outFolderDir.mkdirs()
-        writer.write(json)
-        writer.flush()
-        writer.close()
         return
     }
 
@@ -525,7 +520,7 @@ object RSBFunction {
                         poolIndex = rsgPacketIndex
                     )
                 )
-                val rsgFile = SenBuffer(Paths.get("$inFolder${s}packet${s}$rsgName.rsg"))
+                val rsgFile = SenBuffer(Paths.get(inFolder, "packet", rsgName + ".rsg"))
                 comparePacketInfo(kSecond.packetInfo, rsgFile)
                 var ptxNumber = 0
                 val resInfoLength = kSecond.packetInfo.res.size
@@ -603,81 +598,82 @@ object RSBFunction {
             }
             compositeInfo.writeNull(1024 - (subgroupLength * 16))
             compositeInfo.writeInt32LE(subgroupLength)
-            val fileListPathTemp = mutableListOf<RSBPathTemp>()
-            fileListPack(fileList, fileListPathTemp)
-            val rsgListPathTemp = mutableListOf<RSBPathTemp>()
-            fileListPack(rsgFileList, rsgListPathTemp)
-            val compositeListPathTemp = mutableListOf<RSBPathTemp>()
-            fileListPack(compositeList, compositeListPathTemp)
-            val fileListPathTempLength = fileListPathTemp.size
-            rsbHeadInfo.fileListBeginOffset = fileListBeginOffset
-            // FileList
-            for (j in 0 until fileListPathTempLength) {
-                writeFileList(rsbFile, fileListPathTemp[j])
-            }
-            rsbHeadInfo.fileListLength = (rsbFile.writeOffset - fileListBeginOffset).toInt()
-            // RSGList
-            val rsgListPathTempLength = rsgListPathTemp.size
-            rsbHeadInfo.rsgListBeginOffset = rsbFile.writeOffset.toInt()
-            for (k in 0 until rsgListPathTempLength) {
-                writeFileList(rsbFile, rsgListPathTemp[k])
-            }
-            rsbHeadInfo.rsgListLength = (rsbFile.writeOffset - rsbHeadInfo.rsgListBeginOffset).toInt()
-            // CompositeInfo
-            rsbHeadInfo.compositeNumber = groupLength
-            rsbHeadInfo.compositeInfoBeginOffset = rsbFile.writeOffset.toInt()
-            rsbFile.writeBytes(compositeInfo.toBytes())
-            compositeInfo.close()
-            // CompositeList
-            val compositeListPathTempLength = compositeListPathTemp.size
-            rsbHeadInfo.compositeListBeginOffset = rsbFile.writeOffset.toInt()
-            for (j in 0 until compositeListPathTempLength) {
-                writeFileList(rsbFile, compositeListPathTemp[j])
-            }
-            rsbHeadInfo.compositeListLength = (rsbFile.writeOffset - rsbHeadInfo.compositeListBeginOffset).toInt()
-            // RSGInfo
-            rsbHeadInfo.rsgInfoBeginOffset = rsbFile.writeOffset.toInt()
-            rsbHeadInfo.rsgNumber = rsgPacketIndex
-            rsbFile.writeBytes(rsgInfo.toBytes())
-            rsgInfo.close()
-            // AutoPoolInfo
-            rsbHeadInfo.autoPoolInfoBeginOffset = rsbFile.writeOffset.toInt()
-            rsbHeadInfo.autoPoolNumber = rsgPacketIndex
-            rsbFile.writeBytes(autoPoolInfo.toBytes())
-            autoPoolInfo.close()
-            // PTXInfo
-            rsbHeadInfo.ptxInfoBeginOffset = rsbFile.writeOffset.toInt()
-            rsbHeadInfo.ptxNumber = ptxBeforeNumber
-            rsbFile.writeBytes(ptxInfo.toBytes())
-            ptxInfo.close()
-            if (version == 3) {
-                // Description
-                writeResourcesDescription(rsbFile, rsbHeadInfo, inFolder)
-            }
-            rsbFile.writeNull(RSGFunction.beautifyLength(rsbFile.writeOffset.toInt()))
-            // Packet
-            val fileOffset = rsbFile.writeOffset
-            rsbHeadInfo.fileOffset = fileOffset.toInt()
-            rsbFile.writeBytes(rsgFileBank.toBytes())
-            rsgFileBank.close()
-            // Rewrite PacketOffset
-            rsbFile.readOffset = rsbHeadInfo.rsgInfoBeginOffset.toLong()
-            for (j in 0 until rsbHeadInfo.rsgNumber) {
-                val rsgInfoFileOffset = (rsbHeadInfo.rsgInfoBeginOffset + j * rsbHeadInfo.rsgInfoEachLength) + 128
-                val packetOffset = rsbFile.readInt32LE(rsgInfoFileOffset.toLong())
-                rsbFile.writeInt32LE((packetOffset + fileOffset).toInt(), rsgInfoFileOffset.toLong())
-            }
-            // WriteHead
-            rsbHeadInfo.version = version
-            writeHead(rsbFile, rsbHeadInfo)
         }
+        val fileListPathTemp = mutableListOf<RSBPathTemp>()
+        fileListPack(fileList, fileListPathTemp)
+        val rsgListPathTemp = mutableListOf<RSBPathTemp>()
+        fileListPack(rsgFileList, rsgListPathTemp)
+        val compositeListPathTemp = mutableListOf<RSBPathTemp>()
+        fileListPack(compositeList, compositeListPathTemp)
+        val fileListPathTempLength = fileListPathTemp.size
+        rsbHeadInfo.fileListBeginOffset = fileListBeginOffset
+        // FileList
+        for (j in 0 until fileListPathTempLength) {
+            writeFileList(rsbFile, fileListPathTemp[j])
+        }
+        rsbHeadInfo.fileListLength = (rsbFile.writeOffset - fileListBeginOffset).toInt()
+        // RSGList
+        val rsgListPathTempLength = rsgListPathTemp.size
+        rsbHeadInfo.rsgListBeginOffset = rsbFile.writeOffset.toInt()
+        for (k in 0 until rsgListPathTempLength) {
+            writeFileList(rsbFile, rsgListPathTemp[k])
+        }
+        rsbHeadInfo.rsgListLength = (rsbFile.writeOffset - rsbHeadInfo.rsgListBeginOffset).toInt()
+        // CompositeInfo
+        rsbHeadInfo.compositeNumber = groupLength
+        rsbHeadInfo.compositeInfoBeginOffset = rsbFile.writeOffset.toInt()
+        rsbFile.writeBytes(compositeInfo.toBytes())
+        compositeInfo.close()
+        // CompositeList
+        val compositeListPathTempLength = compositeListPathTemp.size
+        rsbHeadInfo.compositeListBeginOffset = rsbFile.writeOffset.toInt()
+        for (j in 0 until compositeListPathTempLength) {
+            writeFileList(rsbFile, compositeListPathTemp[j])
+        }
+        rsbHeadInfo.compositeListLength = (rsbFile.writeOffset - rsbHeadInfo.compositeListBeginOffset).toInt()
+        // RSGInfo
+        rsbHeadInfo.rsgInfoBeginOffset = rsbFile.writeOffset.toInt()
+        rsbHeadInfo.rsgNumber = rsgPacketIndex
+        rsbFile.writeBytes(rsgInfo.toBytes())
+        rsgInfo.close()
+        // AutoPoolInfo
+        rsbHeadInfo.autoPoolInfoBeginOffset = rsbFile.writeOffset.toInt()
+        rsbHeadInfo.autoPoolNumber = rsgPacketIndex
+        rsbFile.writeBytes(autoPoolInfo.toBytes())
+        autoPoolInfo.close()
+        // PTXInfo
+        rsbHeadInfo.ptxInfoBeginOffset = rsbFile.writeOffset.toInt()
+        rsbHeadInfo.ptxNumber = ptxBeforeNumber
+        rsbFile.writeBytes(ptxInfo.toBytes())
+        ptxInfo.close()
+        if (version == 3) {
+            // Description
+            writeResourcesDescription(rsbFile, rsbHeadInfo, inFolder)
+        }
+        rsbFile.writeNull(RSGFunction.beautifyLength(rsbFile.writeOffset.toInt()))
+        // Packet
+        val fileOffset = rsbFile.writeOffset
+        rsbHeadInfo.fileOffset = fileOffset.toInt()
+        rsbFile.writeBytes(rsgFileBank.toBytes())
+        rsgFileBank.close()
+        // Rewrite PacketOffset
+        rsbFile.readOffset = rsbHeadInfo.rsgInfoBeginOffset.toLong()
+        for (j in 0 until rsbHeadInfo.rsgNumber) {
+            val rsgInfoFileOffset = (rsbHeadInfo.rsgInfoBeginOffset + j * rsbHeadInfo.rsgInfoEachLength) + 128
+            val packetOffset = rsbFile.readInt32LE(rsgInfoFileOffset.toLong())
+            rsbFile.writeInt32LE((packetOffset + fileOffset).toInt(), rsgInfoFileOffset.toLong())
+        }
+        // WriteHead
+        rsbHeadInfo.version = version
+        writeHead(rsbFile, rsbHeadInfo)
+
         rsbFile.outFile(Paths.get(outFile))
         return
     }
 
     private fun writeResourcesDescription(rsbFile: SenBuffer, rsbHeadInfo: RSBHead, inFolder: String) {
-        val jsonString = Files.readString(Paths.get("$inFolder${s}description.json"))
-        val resourcesDescription = JSON.parseObject(jsonString, ResourcesDescription::class.java)
+        val jsonString = File(Paths.get(inFolder, "description.json").pathString).bufferedReader().readText()
+        val resourcesDescription = Json.decodeFromString<ResourcesDescription>(jsonString)
         val groupKeys = resourcesDescription.groups.keys
         val part1Res = SenBuffer()
         val part2Res = SenBuffer()
@@ -980,7 +976,7 @@ object RSBFunction {
                 )
                 val packetInfo = RSGFunction.unpack(
                     rsgFile,
-                    "$outFolder${s}unpack",
+                    Paths.get(outFolder, "unpack").pathString,
                     useResFolder = false,
                     getPacketInfo = false
                 )
@@ -1030,7 +1026,7 @@ object RSBFunction {
             ptxInfoSize = rsbHeadInfo.ptxInfoEachLength,
             path = RSBPathInfo(
                 rsgs = rsgNameList.toMutableList(),
-                packetPath = "$outFolder${s}packet",
+                packetPath = Paths.get(outFolder, "packet").pathString,
             ),
             group = groupList.toMutableList(),
         )
